@@ -1,0 +1,21 @@
+{
+    "name": "submittal-architect-frontend",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "lint": "eslint .",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "lucide-react": "^0.453.0"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-react": "^4.3.3",
+        "vite": "^5.4.10"
+    }
+}
