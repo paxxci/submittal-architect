@@ -41,3 +41,5 @@
 - [2026-03-08] Created Supabase project 'Submittal Architect' and initialized schema.
 - [2026-03-08] Built Keyword Map for semantic discovery and Knowledge Bridge for technical trait extraction.
 - [2026-03-08] Successfully prototyped Platt.com sourcing for 3/4" ground rods.
+- [2026-03-12] Redesigned entire frontend to "The Architect Prism" (Command Center aesthetic).
+- [2026-03-12] Implemented side-by-side Workbench for spec/cutsheet verification.
