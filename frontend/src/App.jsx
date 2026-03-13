@@ -1,182 +1,179 @@
 import React, { useState } from 'react'
 import {
-    Folder, FileText, ChevronRight, ArrowLeft,
-    User, Truck, CheckCircle, Search,
-    FileCode, ExternalLink, ShieldCheck
+    LayoutDashboard, FileSearch, ClipboardCheck, 
+    Settings, Bell, Search, ChevronRight, 
+    MoreHorizontal, CheckCircle2, Clock, 
+    ArrowUpRight, Plus, Box, ShieldCheck,
+    FileText, ExternalLink
 } from 'lucide-react'
 import './App.css'
 
-const MOCK_DATA = {
+const MOCK_PROJECT = {
+    name: "Luxury High-Rise Tower A",
+    client: "Figma - Devops", // Using the image inspiration
+    progress: 60,
+    daysLeft: 2,
     divisions: [
-        { id: '26', title: 'Electrical', sections: 12, progress: 65 },
-        { id: '27', title: 'Communications', sections: 4, progress: 20 },
-        { id: '28', title: 'Electronic Safety', sections: 8, progress: 45 }
+        { id: '26', title: 'Electrical', status: 'In progress', tasks: 6, completed: 4 },
+        { id: '27', title: 'Communications', status: 'Pending', tasks: 4, completed: 0 },
+        { id: '28', title: 'Electronic Safety', status: 'In progress', tasks: 11, completed: 2 }
     ],
-    specs: {
-        '26': [
-            { id: '260533', title: 'Raceways and Boxes', assignedTo: 'self', status: 'ready' },
-            { id: '260519', title: 'Low-Voltage Electrical Power Conductors', assignedTo: 'vendor', status: 'pending' },
-            { id: '261313', title: 'Medium-Voltage Circuit Breaker Switchgear', assignedTo: 'vendor', status: 'pending' },
-            { id: '262416', title: 'Panelboards', assignedTo: 'self', status: 'ready' }
-        ]
-    },
-    parts: {
-        '260533': {
-            1: { title: 'General', items: ['Reference Standards', 'Submittals', 'Quality Assurance'] },
-            2: {
-                title: 'Products', items: [
-                    { name: '3/4" x 8\' Copper Ground Rod', sku: '0050562', manufacturer: 'Erico', match: 0.95 },
-                    { name: 'Rigid Steel Conduit', sku: 'RSC-075', manufacturer: 'Wheatland', match: 1.0 }
-                ]
-            },
-            3: { title: 'Execution', items: ['Installation', 'Testing', 'Protection'] }
-        }
-    }
+    recentItems: [
+        { id: '260533', title: 'Raceways and Boxes', type: 'Spec', match: 95 },
+        { id: '260519', title: 'Low-Voltage Power', type: 'Spec', match: 100 }
+    ]
 }
 
 function App() {
-    const [view, setView] = useState('divisions') // divisions, specs, parts, product
-    const [selectedDiv, setSelectedDiv] = useState(null)
-    const [selectedSpec, setSelectedSpec] = useState(null)
-    const [selectedPart, setSelectedPart] = useState(2)
-    const [selectedProduct, setSelectedProduct] = useState(null)
+    const [view, setView] = useState('dashboard') // dashboard, workbench
+    const [selectedDivision, setSelectedDivision] = useState(null)
 
-    const renderDivisions = () => (
-        <div className="grid-divisions animate-fade-in">
-            {MOCK_DATA.divisions.map(div => (
-                <div key={div.id} className="glass division-card" onClick={() => { setSelectedDiv(div); setView('specs'); }}>
-                    <div className="electric-blue mb-4"><Folder size={40} /></div>
-                    <h3 className="text-xl font-bold mb-1">Division {div.id}</h3>
-                    <p className="text-gray-400 text-sm mb-4">{div.title}</p>
-                    <div className="w-full bg-gray-800 h-1 rounded-full overflow-hidden">
-                        <div className="bg-electric-blue h-full" style={{ width: `${div.progress}%` }}></div>
+    const Dashboard = () => (
+        <div className="dashboard-root animate-fade-in">
+            {/* Header Area */}
+            <div className="hero-section prism-card">
+                <div className="flex justify-between items-start mb-8">
+                    <div className="flex gap-4 items-center">
+                        <div className="project-icon bg-accent-primary">
+                            <Box size={24} color="white" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-extrabold tracking-tight">{MOCK_PROJECT.name}</h1>
+                            <p className="text-text-muted text-sm">{MOCK_PROJECT.client}</p>
+                        </div>
                     </div>
-                    <div className="mt-4 flex justify-between items-center text-xs text-gray-500">
-                        <span>{div.sections} Sections</span>
-                        <span>{div.progress}% Complete</span>
+                    <span className="badge badge-orange font-bold">In Progress</span>
+                </div>
+
+                <div className="progress-container mb-6">
+                    <div className="flex justify-between text-sm mb-2">
+                        <span className="font-bold">{MOCK_PROJECT.progress}% complete</span>
+                        <span className="text-text-muted">{MOCK_PROJECT.daysLeft} days left</span>
+                    </div>
+                    <div className="progress-bar-bg h-2 rounded-full overflow-hidden">
+                        <div className="progress-fill h-full bg-accent-primary glow-orange" style={{ width: `${MOCK_PROJECT.progress}%` }}></div>
                     </div>
                 </div>
-            ))}
-        </div>
-    )
 
-    const renderSpecs = () => (
-        <div className="animate-fade-in">
-            <button className="btn-back" onClick={() => setView('divisions')}><ArrowLeft size={18} /> Back to Divisions</button>
-            <div className="flex items-center gap-4 mb-8">
-                <h2 className="text-3xl font-bold">Division {selectedDiv.id}: {selectedDiv.title}</h2>
+                <div className="flex gap-2">
+                    {[1, 2, 3, 4].map(i => (
+                        <div key={i} className="avatar-circle"></div>
+                    ))}
+                    <div className="avatar-count">+4</div>
+                    <div className="ml-auto text-text-muted text-xs flex items-center gap-4">
+                        <span className="flex items-center gap-1"><Clock size={12} /> Start: Nov 12</span>
+                        <span className="flex items-center gap-1"><CheckCircle2 size={12} /> End: Dec 12</span>
+                    </div>
+                </div>
             </div>
-            <div className="spec-list">
-                {MOCK_DATA.specs[selectedDiv.id]?.map(spec => (
-                    <div key={spec.id} className="glass spec-item" onClick={() => { setSelectedSpec(spec); setView('parts'); }}>
-                        <div className="flex items-center gap-4">
-                            <div className="text-gray-500"><FileCode size={24} /></div>
-                            <div>
-                                <h4 className="font-bold">{spec.id} - {spec.title}</h4>
-                                <div className="flex gap-4 mt-1">
-                                    <div className={`badge ${spec.assignedTo === 'self' ? 'badge-self' : 'badge-vendor'}`}>
-                                        {spec.assignedTo === 'self' ? <User size={10} className="inline mr-1" /> : <Truck size={10} className="inline mr-1" />}
-                                        {spec.assignedTo === 'self' ? 'Self-Perform' : 'Vendor Managed'}
+
+            {/* Divisions Section */}
+            <div className="mt-8">
+                <h2 className="text-lg font-bold mb-4 px-2">Project Divisions</h2>
+                <div className="space-y-4">
+                    {MOCK_PROJECT.divisions.map(div => (
+                        <div key={div.id} className="division-row prism-card" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className={`status-node ${div.completed === div.tasks ? 'complete' : 'in-progress'}`}>
+                                        {div.completed === div.tasks ? <CheckCircle2 size={16} /> : <Clock size={16} />}
                                     </div>
+                                    <div>
+                                        <h3 className="font-bold">Division {div.id} - {div.title}</h3>
+                                        <p className="text-xs text-text-muted">{div.tasks} Sections Found</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <div className="text-right">
+                                        <span className={`badge ${div.completed === div.tasks ? 'badge-green' : 'badge-orange'}`}>
+                                            {div.completed}/{div.tasks} Ready
+                                        </span>
+                                    </div>
+                                    <ChevronRight className="text-text-muted" size={20} />
                                 </div>
                             </div>
                         </div>
-                        <ChevronRight className="text-gray-700" />
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
         </div>
     )
 
-    const renderParts = () => {
-        const partData = MOCK_DATA.parts[selectedSpec.id]
-        return (
-            <div className="animate-fade-in">
-                <button className="btn-back" onClick={() => setView('specs')}><ArrowLeft size={18} /> Back to Specs</button>
-                <div className="mb-8">
-                    <h2 className="text-3xl font-bold mb-1">{selectedSpec.id} - {selectedSpec.title}</h2>
-                    <p className="text-gray-400">Section Shredder: Deep Drill-Down</p>
+    const Workbench = () => (
+        <div className="workbench-root animate-fade-in">
+            <div className="workbench-header flex justify-between items-center mb-6">
+                <div className="flex items-center gap-4">
+                    <button className="btn-icon" onClick={() => setView('dashboard')}><LayoutDashboard size={20} /></button>
+                    <div>
+                        <h2 className="text-xl font-extrabold">Division {selectedDivision.id}</h2>
+                        <p className="text-xs text-text-muted">{selectedDivision.title} Workbench</p>
+                    </div>
                 </div>
+                <div className="flex gap-2">
+                    <button className="btn-secondary">AI Shredder</button>
+                    <button className="btn-primary">Approve All</button>
+                </div>
+            </div>
 
-                <div className="part-tabs">
-                    {[1, 2, 3].map(p => (
-                        <div
-                            key={p}
-                            className={`tab ${selectedPart === p ? 'active' : ''}`}
-                            onClick={() => setSelectedPart(p)}
-                        >
-                            Part {p} - {partData[p].title}
+            <div className="workbench-grid">
+                {/* Left side: Spec List */}
+                <div className="workbench-sidebar space-y-3">
+                    {MOCK_PROJECT.recentItems.map(item => (
+                        <div key={item.id} className="item-card prism-card active">
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs text-text-muted font-mono">{item.id}</span>
+                                <span className="badge badge-green">{item.match}% Match</span>
+                            </div>
+                            <h4 className="font-bold text-sm leading-tight mb-2">{item.title}</h4>
+                            <div className="flex justify-between items-center">
+                                <div className="flex -space-x-2">
+                                    <div className="avatar-xs"></div>
+                                    <div className="avatar-xs"></div>
+                                </div>
+                                <button className="text-accent-primary"><ArrowUpRight size={16} /></button>
+                            </div>
                         </div>
                     ))}
                 </div>
 
-                <div className="mt-8">
-                    {selectedPart === 2 ? (
-                        <div className="product-grid">
-                            {partData[2].items.map((prod, idx) => (
-                                <div key={idx} className="glass product-card" onClick={() => { setSelectedProduct(prod); setView('product'); }}>
-                                    <div className="flex justify-between items-start">
-                                        <h4 className="font-bold text-lg">{prod.name}</h4>
-                                        <span className="badge badge-self">Match {Math.round(prod.match * 100)}%</span>
-                                    </div>
-                                    <div className="text-sm text-gray-500">SKU: {prod.sku}</div>
-                                    <div className="flex items-center gap-2 text-xs text-electric-blue uppercase font-bold mt-2">
-                                        <Search size={14} /> View Cutsheet
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="spec-list">
-                            {partData[selectedPart].items.map((item, idx) => (
-                                <div key={idx} className="glass spec-item border-none">
-                                    <span>{item}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        )
-    }
-
-    const renderProduct = () => (
-        <div className="animate-fade-in">
-            <button className="btn-back" onClick={() => setView('parts')}><ArrowLeft size={18} /> Back to Products</button>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div>
-                    <h2 className="text-4xl font-bold mb-4">{selectedProduct.name}</h2>
-                    <div className="flex gap-4 mb-8">
-                        <div className="glass px-4 py-2">
-                            <span className="text-xs text-gray-500 block uppercase">Manufacturer</span>
-                            <span className="font-bold">{selectedProduct.manufacturer}</span>
-                        </div>
-                        <div className="glass px-4 py-2">
-                            <span className="text-xs text-gray-500 block uppercase">SKU</span>
-                            <span className="font-bold">{selectedProduct.sku}</span>
+                {/* Right side: Detail View */}
+                <div className="workbench-main prism-card">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-bold">26 05 33 - Raceways and Boxes</h3>
+                        <div className="flex gap-2">
+                            <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
                         </div>
                     </div>
 
-                    <div className="glass p-6">
-                        <h3 className="flex items-center gap-2 font-bold mb-4 text-green-400">
-                            <ShieldCheck size={20} /> AI Verification Result
-                        </h3>
-                        <p className="text-gray-300">
-                            Detected exact match for <strong>3/4" Diameter</strong> and <strong>8' Length</strong>.
-                            Copper coating thickness meets spec section <strong>26 05 33</strong> requirements.
-                        </p>
-                    </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-8">
+                        <div>
+                            <div className="mb-6">
+                                <label className="text-xs text-text-muted uppercase font-bold block mb-2">Requirements</label>
+                                <ul className="space-y-2">
+                                    <li className="flex items-center gap-2 text-sm"><CheckCircle2 size={14} className="text-accent-secondary" /> NEMA 3R Enclosures</li>
+                                    <li className="flex items-center gap-2 text-sm"><CheckCircle2 size={14} className="text-accent-secondary" /> UL Listed Components</li>
+                                    <li className="flex items-center gap-2 text-sm text-text-muted"><Clock size={14} /> Grounding Straps required</li>
+                                </ul>
+                            </div>
+                            
+                            <div className="ai-insight p-4 rounded-xl bg-accent-primary bg-opacity-5 border border-accent-primary border-opacity-10">
+                                <h4 className="flex items-center gap-2 font-bold text-accent-primary mb-2 text-sm">
+                                    <Bell size={14} /> AI Insight: Product Match
+                                </h4>
+                                <p className="text-xs text-text-muted leading-relaxed">
+                                    The Erico 3/4" rod matches these specs exactly. Coordinate Page 1 (150, 340) verified for coating thickness.
+                                </p>
+                            </div>
+                        </div>
 
-                <div className="glass p-4">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="font-bold flex items-center gap-2"><FileText size={18} /> Annotated Cutsheet</span>
-                        <button className="text-electric-blue flex items-center gap-1 text-sm"><ExternalLink size={14} /> Full PDF</button>
-                    </div>
-                    <div className="pdf-preview-box">
-                        <div className="text-center">
-                            <div className="red-box-highlight mb-4 inline-block font-mono text-xl">3/4" x 8'</div>
-                            <p className="text-xs text-gray-500">Cutsheet Coordinate Map: Page 1, X:150, Y:340</p>
+                        <div className="pdf-preview-prism">
+                            <div className="flex justify-between items-center p-3 border-b border-border-subtle">
+                                <span className="text-xs font-bold text-text-muted"><FileText size={12} className="inline mr-1" /> CUTSHEET_V1.PDF</span>
+                                <ExternalLink size={12} className="text-text-muted" />
+                            </div>
+                            <div className="pdf-canvas">
+                                <div className="highlight-box">3/4" x 8'</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -185,33 +182,42 @@ function App() {
     )
 
     return (
-        <div className="app-container">
-            <div className="sidebar glass border-none rounded-none">
-                <div className="font-bold text-2xl tracking-tighter electric-blue">SUBMITTAL<br />ARCHITECT</div>
-
-                <nav className="flex flex-col gap-4 mt-8">
-                    <div className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer ${view === 'divisions' ? 'bg-electric-blue bg-opacity-10 text-white' : 'text-gray-500'}`} onClick={() => setView('divisions')}>
-                        <Folder size={20} /> Projects
-                    </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg text-gray-500 cursor-not-allowed">
-                        <User size={20} /> Team
-                    </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg text-gray-500 cursor-not-allowed">
-                        <Truck size={20} /> Vendors
-                    </div>
-                </nav>
-
-                <div className="mt-auto glass p-4 text-xs">
-                    <div className="font-bold text-gray-400 mb-2">ACTIVE PROJECT</div>
-                    <div className="text-white font-bold text-lg leading-tight">Luxury High-Rise<br />Tower A</div>
+        <div className="app-shell bg-bg-deep">
+            {/* Nav Rail */}
+            <aside className="nav-rail">
+                <div className="logo-area">
+                    <div className="logo-prism">SA</div>
                 </div>
-            </div>
+                <nav className="rail-icons">
+                    <button className={`rail-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+                        <LayoutDashboard size={20} />
+                    </button>
+                    <button className={`rail-btn ${view === 'workbench' ? 'active' : ''}`} onClick={() => setView('workbench')}>
+                        <FileSearch size={20} />
+                    </button>
+                    <button className="rail-btn"><ClipboardCheck size={20} /></button>
+                </nav>
+                <div className="rail-footer">
+                    <button className="rail-btn"><Settings size={20} /></button>
+                    <div className="user-avatar"></div>
+                </div>
+            </aside>
 
-            <main className="main-content">
-                {view === 'divisions' && renderDivisions()}
-                {view === 'specs' && renderSpecs()}
-                {view === 'parts' && renderParts()}
-                {view === 'product' && renderProduct()}
+            {/* Top Bar */}
+            <header className="top-bar">
+                <div className="search-field">
+                    <Search size={16} className="text-text-muted" />
+                    <input type="text" placeholder="Search specifications, vendors, or items..." />
+                </div>
+                <div className="header-actions">
+                    <button className="btn-icon"><Bell size={20} /></button>
+                    <button className="btn-primary flex items-center gap-2"><Plus size={16} /> New Submittal</button>
+                </div>
+            </header>
+
+            {/* Main Stage */}
+            <main className="main-stage">
+                {view === 'dashboard' ? <Dashboard /> : <Workbench />}
             </main>
         </div>
     )

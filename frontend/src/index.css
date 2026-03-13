@@ -1,49 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
 :root {
-  font-family: 'Outfit', 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  --bg-deep: #0a0b0e;
+  --bg-surface: #14161b;
+  --bg-card: #1c1f26;
+  --accent-primary: #ff6b00;
+  --accent-secondary: #00ffa3;
+  --text-main: #ffffff;
+  --text-muted: #8e9196;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --glass-effect: blur(12px) saturate(180%);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0c0e14;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background-color: var(--bg-deep);
+  color: var(--text-main);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
-  width: 100%;
-  margin: 0 auto;
+  width: 100vw;
+  height: 100vh;
 }
 
-/* Glassmorphism utility */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(20, 22, 27, 0.7);
+  backdrop-filter: var(--glass-effect);
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
 }
 
-.electric-blue {
-  color: #0088ff;
+.prism-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 24px;
+  transition: var(--transition-smooth);
 }
 
-.bg-electric-blue {
-  background-color: #0088ff;
+.prism-card:hover {
+  border-color: rgba(255, 107, 0, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
-h1, h2, h3 {
-  font-family: 'Outfit', sans-serif;
-  letter-spacing: -0.02em;
+.badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
+
+.badge-orange { background: rgba(255, 107, 0, 0.15); color: var(--accent-primary); }
+.badge-green { background: rgba(0, 255, 163, 0.15); color: var(--accent-secondary); }
+
