@@ -59,6 +59,32 @@
   color: var(--accent-primary);
 }
 
+.rail-btn.badge-orange {
+  background: rgba(255, 107, 0, 0.15);
+  color: #FF6B00;
+  border-color: rgba(255, 107, 0, 0.3);
+}
+
+/* Custom Scrollbar for Workbench Content */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(30, 31, 34, 0.5);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+
 .rail-btn:hover:not(.active) {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-main);
@@ -299,4 +325,203 @@ button { font-family: inherit; font-weight: 600; cursor: pointer; transition: va
 }
 
 .btn-icon:hover { color: var(--text-main); border-color: var(--text-muted); }
-
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 50px rgba(0,0,0,0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-step {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 24px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 14px;
+  color: var(--text-main);
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.form-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.modal-actions {
+  padding-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modal-actions.between {
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 16px;
+}
+
+.upload-zone {
+  border: 2px dashed var(--border-subtle);
+  border-radius: 12px;
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+  cursor: pointer;
+  background: var(--bg-deep);
+}
+
+.upload-zone:hover {
+  border-color: var(--accent-primary);
+}
+
+.upload-zone.loaded {
+  border: 2px solid var(--accent-secondary);
+  background: rgba(0, 255, 163, 0.05);
+  border-style: solid;
+}
+
+.upload-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.upload-zone.loaded .upload-icon {
+  background: rgba(0, 255, 163, 0.2);
+  color: var(--accent-secondary);
+}
+
+.division-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--bg-deep);
+  transition: var(--transition-smooth);
+  margin-bottom: 12px;
+}
+
+.division-item.selected {
+  border-color: var(--accent-primary);
+  background: rgba(255, 107, 0, 0.05);
+}
+
+.checkbox-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.division-item.selected .checkbox-box {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+/* Spec Formatted Text */
+.spec-formatted-text {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.spec-formatted-text .indent-level-1 {
+  padding-left: 0;
+  color: #fff;
+  font-weight: 700;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.spec-formatted-text .indent-level-2 {
+  padding-left: 16px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  position: relative;
+}
+
+.spec-formatted-text .indent-level-3 {
+  padding-left: 40px;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+.spec-formatted-text .indent-level-4 {
+  padding-left: 60px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.spec-formatted-text .base-text {
+  padding-left: 0;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
