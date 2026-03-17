@@ -84,8 +84,14 @@ class SourcingEngine {
             let cutsheetUrl = null;
             if (await pdfLocator.count() > 0) {
                 cutsheetUrl = await pdfLocator.first().getAttribute('href');
-                console.log(`Found PDF link: ${cutsheetUrl}`);
+            } else {
+                // Fallback: search for ANY link ending in .pdf
+                const fallbackPdf = page.locator('a[href$=".pdf"]').first();
+                if (await fallbackPdf.count() > 0) {
+                    cutsheetUrl = await fallbackPdf.getAttribute('href');
+                }
             }
+            if (cutsheetUrl) console.log(`Found PDF link: ${cutsheetUrl}`);
 
             return {
                 vendor: 'Platt Electric Supply',
@@ -98,6 +104,137 @@ class SourcingEngine {
 
         } catch (error) {
             console.error(`Error sourcing from Platt: ${error.message}`);
+            return null;
+        } finally {
+            await page.close();
+        }
+    }
+
+    /**
+     * Fallback for high-end devices: Hubbell-Direct
+     */
+    async sourceFromHubbell(query) {
+        if (!this.browser) await this.init();
+        const page = await this.context.newPage();
+
+        try {
+            console.log(`Fallback: Searching Hubbell for: "${query}"...`);
+            const searchUrl = `https://www.hubbell.com/hubbell/en/search/?text=${encodeURIComponent(query)}`;
+            await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
+
+            // Handle Cookie Banner (Accept All)
+            const cookieBtn = page.locator('#onetrust-accept-btn-handler');
+            await cookieBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+            if (await cookieBtn.isVisible()) {
+                await cookieBtn.click({ force: true });
+            }
+
+            // Click "View Details" on first product
+            const viewDetailsBtn = page.locator('a[title="View details"]').first();
+            if (await viewDetailsBtn.count() > 0) {
+                await viewDetailsBtn.click();
+                await page.waitForLoadState('networkidle');
+                
+                // Switch to Resources Tab
+                const resourcesTab = page.locator('text="Resources and downloads"');
+                if (await resourcesTab.count() > 0) {
+                    await resourcesTab.click();
+                    await page.waitForTimeout(1000); // Wait for tab animation
+                }
+
+                // Look for Specification Sheet PDF
+                const pdfLink = page.locator('a[title*="Specification Sheet"], a[title*="Spec Sheet"], a:has-text("Specification Sheet")').first();
+                const cutsheetUrl = await pdfLink.count() > 0 ? await pdfLink.getAttribute('href') : null;
+
+                return {
+                    vendor: 'Hubbell Wiring Device',
+                    sku: 'Hubbell-Managed',
+                    cutsheetUrl: cutsheetUrl ? (cutsheetUrl.startsWith('http') ? cutsheetUrl : `https://www.hubbell.com${cutsheetUrl}`) : null,
+                    pdpUrl: page.url()
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error(`Error sourcing from Hubbell: ${error.message}`);
+            return null;
+        } finally {
+            await page.close();
+        }
+    }
+
+    /**
+     * Orchestrates tiered sourcing based on user preferences.
+     */
+    async tieredSource(query, prefs = { vendors: ['Platt'], brands: ['Hubbell'] }) {
+        console.log(`Starting Tiered Sourcing for: "${query}"`);
+        
+        // Tier 1: Preferred Vendors
+        for (const vendor of prefs.vendors) {
+            let result = null;
+            if (vendor.toLowerCase().includes('platt')) {
+                result = await this.sourceFromPlatt(query);
+            } else if (vendor.toLowerCase().includes('north coast') || vendor.toLowerCase().includes('northcoast')) {
+                result = await this.sourceFromNorthCoast(query);
+            }
+            
+            if (result && result.cutsheetUrl) {
+                console.log(`Success in Tier 1: Found on ${vendor}`);
+                return result;
+            }
+        }
+
+        // Tier 2: Brand Fallback (If Tier 1 fails)
+        console.log("Tier 1 found no results. Pivoting to Tier 2 (Brands)...");
+        for (const brand of prefs.brands) {
+            let result = null;
+            if (brand.toLowerCase().includes('hubbell')) {
+                result = await this.sourceFromHubbell(query);
+            } else if (brand.toLowerCase().includes('leviton')) {
+                result = await this.sourceFromLeviton(query);
+            }
+
+            if (result && result.cutsheetUrl) {
+                console.log(`Success in Tier 2: Found on ${brand} site.`);
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Placeholder for North Coast - uses search query navigation
+     */
+    async sourceFromNorthCoast(query) {
+        if (!this.browser) await this.init();
+        const page = await this.context.newPage();
+        try {
+            console.log(`Searching North Coast for: "${query}"...`);
+            // Custom search URL for North Coast
+            const searchUrl = `https://www.northcoast.com/search?q=${encodeURIComponent(query)}`;
+            await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
+            
+            // For now, return a placeholder to show it attempted the tier
+            return null; 
+        } catch (e) {
+            return null;
+        } finally {
+            await page.close();
+        }
+    }
+
+    /**
+     * Placeholder for Leviton - uses search query navigation
+     */
+    async sourceFromLeviton(query) {
+        if (!this.browser) await this.init();
+        const page = await this.context.newPage();
+        try {
+            console.log(`Searching Leviton for: "${query}"...`);
+            const searchUrl = `https://www.leviton.com/en/search-results?q=${encodeURIComponent(query)}`;
+            await page.goto(searchUrl, { waitUntil: 'load', timeout: 60000 });
+            return null;
+        } catch (e) {
             return null;
         } finally {
             await page.close();

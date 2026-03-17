@@ -7,11 +7,12 @@
 
 class SectionShredder {
     constructor() {
-        // Patterns for CSI standard sub-heads
+        // CSI spec books use many formats for part headers:
+        // "PART 1 - GENERAL", "PART 1", "PART1", "1.1 GENERAL", "1.01  General Requirements"
         this.parts = {
-            p1: /PART\s+1\s+-\s+GENERAL/i,
-            p2: /PART\s+2\s+-\s+PRODUCTS/i,
-            p3: /PART\s+3\s+-\s+EXECUTION/i
+            p1: /^\s*PART\s*1\b|^\s*1\s*[\.\-]\s*0[01]\s|^\s*1\.01\b/i,
+            p2: /^\s*PART\s*2\b|^\s*2\s*[\.\-]\s*0[01]\s|^\s*2\.01\b/i,
+            p3: /^\s*PART\s*3\b|^\s*3\s*[\.\-]\s*0[01]\s|^\s*3\.01\b/i,
         };
     }
 
@@ -30,12 +31,27 @@ class SectionShredder {
         };
 
         lines.forEach(line => {
+            let partMatched = false;
+            let headerText = '';
+
             if (this.parts.p1.test(line)) {
                 currentPart = 'part1';
+                partMatched = true;
+                headerText = line.match(this.parts.p1)[0];
             } else if (this.parts.p2.test(line)) {
                 currentPart = 'part2';
+                partMatched = true;
+                headerText = line.match(this.parts.p2)[0];
             } else if (this.parts.p3.test(line)) {
                 currentPart = 'part3';
+                partMatched = true;
+                headerText = line.match(this.parts.p3)[0];
+            }
+
+            if (partMatched) {
+                // If there's content after the header on the same line, keep it
+                const restOfLine = line.substring(line.indexOf(headerText) + headerText.length).trim();
+                if (restOfLine) result[currentPart].push(restOfLine);
             } else if (currentPart) {
                 result[currentPart].push(line);
             }

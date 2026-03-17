@@ -23,6 +23,7 @@
     "interrogation_flow": "Trigger PM questions for items below confidence_threshold",
     "architecture": "Modular-First (Plug-and-play for new Divisions)",
     "persistence_layer": "Supabase (Project ID: ecnrtylraaddmwmatsrs)",
+    "shared_drive_path": "G:\\My Drive\\Submittal Architect",
     "responsibility_mapping": ["Self-Perform", "Vendor-Managed", "Outside-Scope"],
     "orchestration_mode": "Human-in-the-Loop (Initial scope defined by user/AI command per project)"
   },
@@ -43,3 +44,6 @@
 - [2026-03-08] Successfully prototyped Platt.com sourcing for 3/4" ground rods.
 - [2026-03-12] Redesigned entire frontend to "The Architect Prism" (Command Center aesthetic).
 - [2026-03-12] Implemented side-by-side Workbench for spec/cutsheet verification.
+- [2026-03-16] Integrated Supabase for real-time data persistence (projects & spec sections).
+- [2026-03-16] Implemented AI Sourcing simulations (Find Cutsheet & Vendor Managed workflows).
+- [2026-03-16] Refined dual-checkbox product completion logic with global visual feedback.
