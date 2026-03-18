@@ -240,9 +240,13 @@ function App() {
 
         if (!sections) return;
 
-        // Apply division filter strictly - only show what user selected
-        const filteredSections = divisionFilter 
-            ? sections.filter(s => divisionFilter.some(d => s.section_number?.replace(/\s/g,'').startsWith(d)))
+        // Use saved division scope from project metadata if no explicit filter passed
+        const savedDivisions = project.metadata?.selected_divisions;
+        const activeFilter = divisionFilter || savedDivisions || null;
+
+        // Apply division filter — only show what was originally scoped
+        const filteredSections = activeFilter 
+            ? sections.filter(s => activeFilter.some(d => s.section_number?.replace(/\s/g,'').startsWith(d)))
             : sections;
 
         const uiItems = mapShreddedDataToUI(filteredSections);
@@ -347,6 +351,16 @@ function App() {
 
                 if (pError) throw pError;
 
+                // Save the selected division scope to project metadata so future loads respect it
+                const selectedDivisionPrefixes = [
+                    ...Object.keys(newProjectData.divisions).filter(k => newProjectData.divisions[k]),
+                    ...newProjectData.customDivisions
+                ];
+                await supabase
+                    .from('projects')
+                    .update({ metadata: { selected_divisions: selectedDivisionPrefixes } })
+                    .eq('id', project.id);
+
                 // 2. Trigger Shredder API Job
                 if (!newProjectData.pdfPath) {
                     throw new Error('No PDF uploaded. Please go back and upload your spec book.');
@@ -388,14 +402,10 @@ function App() {
                                     .eq('project_id', project.id);
                                     
                                 // STRICT DIVISION FILTER: Only show sections from explicitly selected divisions
-                                const selectedDivisionPrefixes = [
-                                    ...Object.keys(newProjectData.divisions).filter(k => newProjectData.divisions[k]),
-                                    ...newProjectData.customDivisions
-                                ];
+                                // (selectedDivisionPrefixes already computed above)
 
                                 const filteredSections = sections.filter(s => {
                                     const num = (s.section_number || '').replace(/\s/g, '');
-                                    // STRICT: only explicit divisions. Semantic only applies WITHIN selected divisions.
                                     return selectedDivisionPrefixes.some(prefix => num.startsWith(prefix));
                                 });
 
