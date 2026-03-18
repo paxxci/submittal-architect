@@ -113,7 +113,7 @@ app.get('/api/shred', async (req, res) => {
 
                 const { error } = await supabase
                     .from('spec_sections')
-                    .upsert(records, { onConflict: 'project_id,section_number' });
+                    .insert(records);
 
                 if (error) throw error;
 
