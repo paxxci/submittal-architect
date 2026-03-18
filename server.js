@@ -11,6 +11,14 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
+// Serve the Vite-built frontend
+const FRONTEND_DIST = path.join(__dirname, 'frontend', 'dist');
+if (fs.existsSync(FRONTEND_DIST)) {
+    app.use(express.static(FRONTEND_DIST));
+} else {
+    console.warn('[Server] frontend/dist not found — run: cd frontend && npm run build');
+}
+
 // Ensure uploads directory exists
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
@@ -158,6 +166,15 @@ app.get('/api/source', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// SPA fallback — return index.html for any non-API route (Express 5 syntax)
+if (fs.existsSync(FRONTEND_DIST)) {
+    app.get('/{*path}', (req, res) => {
+        if (!req.path.startsWith('/api')) {
+            res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+        }
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`\n======================================`);
