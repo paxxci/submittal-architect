@@ -908,8 +908,8 @@ function App() {
                             className="prism-card hover:border-accent-primary/50 cursor-pointer transition-all hover:translate-y-[-2px]"
                             onClick={() => {
                                 setActiveProject(proj);
-                                setProjectData(null);
-                                loadProjectData(proj, null); // Load all sections for this project
+                                // Don't null-out projectData first — keep old state visible while loading
+                                loadProjectData(proj, null);
                                 setView('dashboard');
                             }}
                         >
@@ -944,7 +944,15 @@ function App() {
         </div>
     )
 
-    const renderDashboard = () => (
+    const renderDashboard = () => {
+        // Guard: projectData may still be loading — show spinner instead of crashing
+        if (!projectData) return (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
+                <div className="w-10 h-10 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-medium">Loading project...</p>
+            </div>
+        );
+        return (
         <div className="dashboard-root animate-fade-in">
             {/* Breadcrumb Header Area */}
             <div className="mb-4 px-2">
@@ -1032,7 +1040,8 @@ function App() {
                 </div>
             </div>
         </div>
-    )
+        );
+    }
 
     const renderSourcingSettings = () => (
         <div className="sourcing-settings animate-fade-in max-w-4xl mx-auto py-12">
@@ -1488,7 +1497,12 @@ function App() {
                 <main className="main-stage">
                     {view === 'portfolio' && renderPortfolio()}
                     {view === 'dashboard' && renderDashboard()}
-                    {view === 'workbench' && renderWorkbench()}
+                    {view === 'workbench' && (projectData ? renderWorkbench() : (
+                        <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
+                            <div className="w-10 h-10 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
+                            <p className="text-sm font-medium">Loading workbench...</p>
+                        </div>
+                    ))}
                     {view === 'sourcing-settings' && renderSourcingSettings()}
                 </main>
             </div>
