@@ -1584,8 +1584,8 @@ function App() {
         const { part1, part2, part3 } = addSectionData.rawText.trim() ? shredSection(addSectionData.rawText) : { part1: '', part2: '', part3: '' };
         const hasAnyPart = part1 || part2 || part3;
         return (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md animate-fade-in">
-                <div className="w-full max-w-2xl prism-card border border-border-subtle shadow-2xl mx-4" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-overlay">
+                <div className="modal-content prism-card custom-scrollbar" style={{ maxWidth: '680px' }}>
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <h2 className="text-xl font-extrabold tracking-tight">Add Section Manually</h2>
