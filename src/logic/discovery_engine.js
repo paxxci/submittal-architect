@@ -125,8 +125,8 @@ class DiscoveryEngine {
           const rawNum = headerMatch[1];
           const sectionNum = rawNum.replace(/\s/g, '');
 
-          // Validate CSI range
-          if (!/^\d{4,8}$/.test(sectionNum)) {
+          // Validate CSI range — allow decimal subsections like 260533.13
+          if (!/^\d{4,8}(\.\d{1,2})?$/.test(sectionNum)) {
             if (activeSection) activeSection.content.push(text);
             continue;
           }
@@ -151,8 +151,9 @@ class DiscoveryEngine {
             ELECTRICAL_KEYWORDS.some(k => title.toUpperCase().includes(k.toUpperCase()));
 
           if (sectionMap.has(sectionNum)) {
-            // Already have this section — this might be the REAL one (ToC was first)
-            // Update to use this body version
+            // Already have this section — two cases:
+            // A) First encounter was from ToC → upgrade it to a body section
+            // B) Page footer/header repeating the section number → continue collecting into same section
             const existing = sectionMap.get(sectionNum);
             if (existing.isTocOnly) {
               existing.isTocOnly = false;
@@ -160,8 +161,9 @@ class DiscoveryEngine {
               if (title) existing.title = title;
               activeSection = existing;
             } else {
-              // Duplicate body header — might be appendix or reference, skip
-              activeSection = null;
+              // Re-attach to the existing section — this handles page-level repeating
+              // section footers which would otherwise cut off content collection
+              activeSection = existing;
             }
           } else {
             const newSection = {
