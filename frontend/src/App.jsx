@@ -216,6 +216,105 @@ function App() {
     const [vendors, setVendors] = useState(['Platt', 'Hubbell', 'North Coast'])
     const [manufacturers, setManufacturers] = useState(['Hubbell', 'Leviton', 'Eaton'])
 
+    // Manual section add state
+    const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false)
+    const [addSectionData, setAddSectionData] = useState({ sectionNumber: '', title: '', rawText: '' })
+    const [addSectionSaving, setAddSectionSaving] = useState(false)
+
+    // Inline shredder — mirrors backend shredder.js Tier 1 & 2 logic
+    const shredSection = (text) => {
+        const lines = text.split('\n');
+        const primaryHeaders = {
+            p1: /^\s*PART\s*1(?=[\s\-\u2013\u2014:.[\r\n]|$)/i,
+            p2: /^\s*PART\s*2(?=[\s\-\u2013\u2014:.[\r\n]|$)/i,
+            p3: /^\s*PART\s*3(?=[\s\-\u2013\u2014:.[\r\n]|$)/i,
+        };
+        const fallbackHeaders = {
+            p1: /^\s*1[.\-]\s*0[01](?:\s|$)/i,
+            p2: /^\s*2[.\-]\s*0[01](?:\s|$)/i,
+            p3: /^\s*3[.\-]\s*0[01](?:\s|$)/i,
+        };
+        const tryShred = (patterns) => {
+            let cur = null;
+            const b = { part1: [], part2: [], part3: [] };
+            for (const line of lines) {
+                let matched = null;
+                if (patterns.p1.test(line)) matched = 'part1';
+                else if (patterns.p2.test(line)) matched = 'part2';
+                else if (patterns.p3.test(line)) matched = 'part3';
+                if (matched) {
+                    cur = matched;
+                    const rest = line.replace(/^\s*PART\s*[123]\s*[\-\u2013\u2014:.]?\s*/i, '')
+                                     .replace(/^\s*[123][.\-]\s*0[01]\s*/i, '').trim();
+                    if (rest) b[cur].push(rest);
+                } else if (cur) b[cur].push(line);
+            }
+            return { part1: b.part1.join('\n').trim(), part2: b.part2.join('\n').trim(), part3: b.part3.join('\n').trim() };
+        };
+        const r1 = tryShred(primaryHeaders);
+        if (r1.part1 || r1.part2 || r1.part3) return r1;
+        const r2 = tryShred(fallbackHeaders);
+        if (r2.part1 || r2.part2 || r2.part3) return r2;
+        return { part1: text.trim(), part2: '', part3: '' }; // graceful fallback
+    };
+
+    const saveManualSection = async () => {
+        if (!addSectionData.sectionNumber.trim() || !addSectionData.rawText.trim()) return;
+        if (!projectData?.id) return;
+        setAddSectionSaving(true);
+        try {
+            const sectionNum = addSectionData.sectionNumber.replace(/\s/g, '');
+            const { part1, part2, part3 } = shredSection(addSectionData.rawText);
+            const divPrefix = sectionNum.substring(0, 2);
+            const isElectrical = ['26','27','28'].includes(divPrefix);
+
+            const record = {
+                project_id: projectData.id,
+                section_id: sectionNum,
+                section_number: addSectionData.sectionNumber.trim().toUpperCase(),
+                title: addSectionData.title.trim().toUpperCase() || 'MANUAL ENTRY',
+                is_electrical: isElectrical,
+                page_number: null,
+                coordinates: {},
+                part1_content: part1,
+                part2_content: part2,
+                part3_content: part3,
+                raw_content: addSectionData.rawText,
+                confidence_score: 1.0 // manually added = 100% confidence
+            };
+
+            const { error } = await supabase.from('spec_sections').insert([record]);
+            if (error) throw error;
+
+            // Update local state immediately
+            const newItem = {
+                id: addSectionData.sectionNumber.trim(),
+                dbId: null,
+                title: record.title,
+                type: 'Spec',
+                match: 100,
+                pageNumber: null,
+                part1: part1 || 'No Part 1 content.',
+                part2: { extractedSpecs: [{ trait: 'Source', value: 'Manual Entry', verified: true }], insight: 'Manually added section.', rawText: part2 || 'No Part 2 content.' },
+                part3: part3 || 'No Part 3 content.'
+            };
+
+            setProjectData(prev => ({
+                ...prev,
+                recentItems: [...(prev.recentItems || []), newItem],
+                divisions: deriveDivisions([...(prev.recentItems || []), newItem])
+            }));
+
+            setAddSectionData({ sectionNumber: '', title: '', rawText: '' });
+            setIsAddSectionModalOpen(false);
+        } catch (err) {
+            console.error('Failed to save manual section:', err);
+            alert('Error saving section: ' + err.message);
+        } finally {
+            setAddSectionSaving(false);
+        }
+    };
+
     // Load PORTFOLIO (all projects) from Supabase on mount
     useEffect(() => {
         const fetchProjects = async () => {
@@ -1017,7 +1116,18 @@ function App() {
 
             {/* Divisions Section */}
             <div className="mt-8">
-                <h2 className="text-lg font-bold mb-4 px-2">Project Divisions</h2>
+                <div className="flex justify-between items-center mb-4 px-2">
+                    <h2 className="text-lg font-bold">Project Divisions</h2>
+                    <button
+                        id="add-section-btn"
+                        style={{ padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        className="btn-secondary"
+                        onClick={() => setIsAddSectionModalOpen(true)}
+                    >
+                        <Plus size={13} />
+                        Add Section Manually
+                    </button>
+                </div>
                 <div className="space-y-4">
                     {projectData.divisions && projectData.divisions.length > 0 ? projectData.divisions.map(div => (
                         <div key={div.id} className="division-row prism-card" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
@@ -1228,6 +1338,18 @@ function App() {
             <div className="workbench-grid">
                 {/* Left side: Spec List */}
                 <div className="workbench-sidebar space-y-3">
+                    {/* Add Section Button */}
+                    <button
+                        onClick={() => {
+                            setAddSectionData(p => ({ ...p, sectionNumber: selectedDivision?.id ? `${selectedDivision.id} ` : '' }));
+                            setIsAddSectionModalOpen(true);
+                        }}
+                        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: '1px dashed var(--border-subtle)', background: 'transparent', color: 'var(--text-muted)', transition: 'all 0.2s' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-primary)'; e.currentTarget.style.color = 'var(--accent-primary)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >
+                        <Plus size={14} /> Add Missing Section
+                    </button>
                     {(projectData.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
                         const p1Progress = calculatePartProgress(item, 'part1');
                         const p2Progress = calculatePartProgress(item, 'part2');
@@ -1455,6 +1577,81 @@ function App() {
         )
     }
 
+
+    const renderAddSectionModal = () => {
+        if (!isAddSectionModalOpen) return null;
+        const charCount = addSectionData.rawText.length;
+        const { part1, part2, part3 } = addSectionData.rawText.trim() ? shredSection(addSectionData.rawText) : { part1: '', part2: '', part3: '' };
+        const hasAnyPart = part1 || part2 || part3;
+        return (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md animate-fade-in">
+                <div className="w-full max-w-2xl prism-card border border-border-subtle shadow-2xl mx-4" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h2 className="text-xl font-extrabold tracking-tight">Add Section Manually</h2>
+                            <p className="text-sm text-text-muted mt-1">Paste raw spec text — Parts 1, 2 &amp; 3 are parsed automatically.</p>
+                        </div>
+                        <button onClick={() => { setIsAddSectionModalOpen(false); setAddSectionData({ sectionNumber: '', title: '', rawText: '' }); }} className="text-text-muted hover:text-white transition-colors p-1">
+                            <Plus size={20} className="rotate-45" />
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label className="block text-xs font-bold text-text-muted uppercase tracking-widest mb-2">Section Number *</label>
+                            <input type="text" placeholder="e.g. 26 05 26" value={addSectionData.sectionNumber}
+                                onChange={e => setAddSectionData(p => ({ ...p, sectionNumber: e.target.value }))}
+                                className="w-full bg-bg-deep border border-border-subtle rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent-primary transition-all font-mono" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-text-muted uppercase tracking-widest mb-2">Section Title</label>
+                            <input type="text" placeholder="e.g. Grounding and Bonding" value={addSectionData.title}
+                                onChange={e => setAddSectionData(p => ({ ...p, title: e.target.value }))}
+                                className="w-full bg-bg-deep border border-border-subtle rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent-primary transition-all" />
+                        </div>
+                    </div>
+                    <div className="mb-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-xs font-bold text-text-muted uppercase tracking-widest">Paste Raw Spec Text *</label>
+                            <span className="text-xs text-text-muted font-mono">{charCount.toLocaleString()} chars</span>
+                        </div>
+                        <textarea placeholder="Copy and paste the full spec section here — PART 1 GENERAL, PART 2 PRODUCTS, PART 3 EXECUTION..."
+                            value={addSectionData.rawText}
+                            onChange={e => setAddSectionData(p => ({ ...p, rawText: e.target.value }))}
+                            rows={10} style={{ minHeight: '200px' }}
+                            className="w-full bg-bg-deep border border-border-subtle rounded-lg px-4 py-3 text-sm font-mono outline-none focus:ring-2 focus:ring-accent-primary transition-all resize-y" />
+                    </div>
+                    {addSectionData.rawText.trim() && (
+                        <div className="mb-6 p-4 bg-bg-deep/60 border border-border-subtle rounded-xl">
+                            <p className="text-xs font-bold text-text-muted uppercase tracking-widest mb-3">Parse Preview</p>
+                            <div className="grid grid-cols-3 gap-3">
+                                {[['Part 1', part1], ['Part 2', part2], ['Part 3', part3]].map(([label, content]) => (
+                                    <div key={label} className={`rounded-lg p-3 border ${content ? 'border-accent-primary/40 bg-accent-primary/5' : 'border-border-subtle opacity-40'}`}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <div className={`w-2 h-2 rounded-full ${content ? 'bg-accent-primary' : 'bg-text-muted'}`} />
+                                            <span className="text-xs font-bold">{label}</span>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted font-mono line-clamp-2">{content ? content.substring(0, 80) + '...' : 'Not detected'}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {!hasAnyPart && <p className="text-xs text-amber-400 mt-3">⚠ No PART headers detected — all text stored as Part 1. Still saveable.</p>}
+                        </div>
+                    )}
+                    <div className="flex justify-end gap-3">
+                        <button className="btn-secondary" onClick={() => { setIsAddSectionModalOpen(false); setAddSectionData({ sectionNumber: '', title: '', rawText: '' }); }}>Cancel</button>
+                        <button className="btn-primary flex items-center gap-2" onClick={saveManualSection}
+                            disabled={addSectionSaving || !addSectionData.sectionNumber.trim() || !addSectionData.rawText.trim()}
+                            style={{ opacity: (addSectionSaving || !addSectionData.sectionNumber.trim() || !addSectionData.rawText.trim()) ? 0.5 : 1 }}>
+                            {addSectionSaving
+                                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving...</>
+                                : <><Plus size={16} /> Save Section</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <>
             <div className="app-shell bg-bg-deep">
@@ -1518,6 +1715,7 @@ function App() {
             </div>
             
             {renderNewProjectModal()}
+            {renderAddSectionModal()}
 
             {/* Global Shredding Overlay */}
             {isShredding && view !== 'workbench' && (
