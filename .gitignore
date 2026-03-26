@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 shred_debug.txt
 *.log
+.env
+node_modules/
+uploads/

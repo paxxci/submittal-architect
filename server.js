@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -150,16 +151,54 @@ app.get('/api/shred/status', (req, res) => {
 });
 
 const SourcingEngine = require('./src/logic/sourcing_engine');
+const AIEngine = require('./src/logic/ai_engine');
+
 app.get('/api/source', async (req, res) => {
-    const { query, prefs } = req.query;
-    console.log(`--- [API] Sourcing Request: "${query}" ---`);
+    const { query, sectionTitle, specText, prefs } = req.query;
+    console.log(`\n--- [API] Sourcing Request ---`);
+    console.log(`Section: "${sectionTitle || query}"`);
     
     try {
         const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'] };
-        const engine = new SourcingEngine();
-        const result = await engine.tieredSource(query, preferences);
         
+        // STEP 1: Use Gemini AI to read the spec text and extract a clean search query
+        let searchQuery = query; // fallback if no API key
+        let aiResult = null;
+        
+        if (process.env.OPENROUTER_API_KEY) {
+            console.log('[AI] Reading spec text with Gemini via OpenRouter...');
+            const ai = new AIEngine(process.env.OPENROUTER_API_KEY);
+            aiResult = await ai.extractSearchQuery(
+                sectionTitle || query,
+                specText || query
+            );
+            searchQuery = aiResult.searchQuery;
+            console.log(`[AI] Clean search query: "${searchQuery}"`);
+            
+            // If AI says this section has no physical product, skip scraping
+            if (aiResult.isProductSection === false) {
+                return res.json({ 
+                    success: false, 
+                    reason: 'no_product',
+                    message: 'This spec section does not describe a physical product that needs a cut sheet.' 
+                });
+            }
+        } else {
+            console.warn('[AI] No GEMINI_API_KEY set — using raw query as fallback.');
+        }
+        
+        // STEP 2: Run the tiered vendor scraper with the AI-extracted query
+        const engine = new SourcingEngine();
+        const result = await engine.tieredSource(searchQuery, preferences);
         await engine.shutdown();
+        
+        // STEP 3: Attach AI metadata to the result
+        if (result) {
+            result.aiExtractedQuery = searchQuery;
+            result.keyRequirements = aiResult?.keyRequirements || [];
+            result.productType = aiResult?.productType || sectionTitle;
+        }
+        
         res.json({ success: true, result });
     } catch (error) {
         console.error('[API] Sourcing Error:', error);

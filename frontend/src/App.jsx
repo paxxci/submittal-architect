@@ -77,8 +77,7 @@ const MOCK_PORTFOLIO = [
 ];
 
 // Helper Component to Format Raw Specification Text
-const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock }) => {
-    const [activeBlock, setActiveBlock] = useState(null);
+const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey }) => {
     if (!text) return null;
     
     const lines = text.split('\n');
@@ -102,7 +101,11 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
     return (
         <div className="spec-formatted-container space-y-4">
             {blocks.map((blockLines, blockIdx) => {
-                const blockId = `${specId}-${partId}-${blockIdx}`;
+                const blockId = `${specId}___${partId}___${blockIdx}`;
+                // Extract clean block title key (e.g. "2.05 ELECTRICAL METALLIC TUBING EMT")
+                const blockTitle = blockLines[0]?.trim() || 'GENERAL SECTION';
+                const blockKey = blockTitle.slice(0, 80);
+                const isSelected = selectedBlockKey === blockKey;
                 const isCompleted = completedBlocks?.includes(blockId);
                 const isNA = naBlocks?.includes(blockId);
                 const isGreen = isCompleted || isNA;
@@ -113,79 +116,96 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                         className={`spec-block prism-card transition-all p-5 relative border-l-4 ${
                             isCompleted ? 'border-l-accent-secondary border-accent-secondary/30 bg-accent-secondary/5 shadow-[0_0_20px_rgba(0,255,163,0.05)]' : 
                             isNA ? 'border-l-text-muted border-border-subtle bg-white/2 opacity-80' : 
+                            isSelected ? 'border-l-accent-primary bg-accent-primary/8 shadow-[0_0_20px_rgba(255,115,0,0.15)]' :
                             'border-l-transparent hover:border-l-accent-primary/50'
                         } ${
-                            activeBlock === blockIdx && !isGreen ? 'ring-2 ring-accent-primary bg-accent-primary/5' : 
+                            isSelected && !isGreen ? 'ring-1 ring-accent-primary/40' : 
                             !isGreen ? 'hover:border-accent-primary/20 hover:translate-x-1' : ''
                         }`}
-                        onClick={() => setActiveBlock(blockIdx)}
+                        onClick={() => onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx })}
                     >
                         <div className="mb-4">
-                            {blockLines.map((line, lineIdx) => {
-                                const trimmed = line.trim();
-                                let indentClass = "base-text";
+                            {/* Group Header & Actions Together */}
+                            <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/10 gap-6">
+                                <div className="flex-1">
+                                    {blockLines.length > 0 && /^[1-3]\.[0-9]{2}/.test(blockLines[0].trim()) ? (
+                                        <div className={`indent-level-0 font-extrabold text-lg uppercase tracking-wide leading-tight ${isGreen ? 'text-accent-secondary' : 'text-accent-primary'}`}>
+                                            {blockLines[0].trim()}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs font-bold text-text-muted uppercase tracking-widest">
+                                            General Section
+                                        </div>
+                                    )}
+                                </div>
                                 
-                                // Header: 2.02 WIRING CONNECTORS
-                                if (/^[1-3]\.[0-9]{2}/.test(trimmed)) {
-                                    indentClass = `indent-level-0 font-extrabold pb-2 mb-2 border-b border-white/5 uppercase tracking-wide ${isGreen ? 'text-accent-secondary' : 'text-accent-primary'}`;
-                                }
-                                else if (/^[A-Z]\./.test(trimmed)) indentClass = "indent-level-1";
-                                else if (/^[0-9]+\./.test(trimmed)) indentClass = "indent-level-2";
-                                else if (/^[a-z]\./.test(trimmed)) indentClass = "indent-level-3";
-                                else if (/^-/.test(trimmed)) indentClass = "indent-level-4";
-
-                                return (
-                                    <div key={lineIdx} className={indentClass}>
-                                        {trimmed}
+                                {/* Large Clickable Action Buttons */}
+                                <div className="flex items-center gap-4 shrink-0">
+                                    {/* Sourcing Action */}
+                                    <div className="w-[170px] flex justify-end items-center">
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => { 
+                                                e.preventDefault();
+                                                e.stopPropagation(); 
+                                                if (!isCompleted) {
+                                                    // Select this block so right column knows which cut sheet to show
+                                                    onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx });
+                                                    window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
+                                                        detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n') } 
+                                                    })); 
+                                                }
+                                            }}
+                                            disabled={isCompleted}
+                                            className={`btn-secondary !py-2.5 !px-4 !h-auto flex flex-col items-center gap-1 group/btn transition-all ${isCompleted ? 'opacity-20 cursor-not-allowed saturate-0' : 'opacity-100 shadow-[0_0_15px_rgba(255,115,0,0.3)] hover:brightness-125 hover:-translate-y-0.5'}`}
+                                            title={isCompleted ? "Section already marked done." : "Initiate Vendor Search"}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Box size={16} className={!isCompleted ? "group-hover/btn:rotate-12 transition-transform text-accent-primary" : "text-text-muted"} />
+                                                <span className="font-bold text-white tracking-widest text-[11px] uppercase">Find Cutsheet</span>
+                                            </div>
+                                            <span className="text-[9px] font-mono uppercase text-white/50">Auto-Search Vendors</span>
+                                        </button>
                                     </div>
-                                );
-                            })}
-                        </div>
 
-                        {/* Dual Checkbox Action Area */}
-                        <div className="flex flex-wrap items-center justify-between gap-4 pt-5 mt-4 border-t border-white/5">
-                            <div className="flex gap-6">
-                            <label className="flex items-center gap-3 cursor-pointer group">
-                                <div 
-                                    onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'DONE'); }}
-                                    className={`w-7 h-7 rounded-md border-2 flex items-center justify-center transition-all ${
-                                        isCompleted ? 'bg-accent-secondary border-accent-secondary shadow-[0_0_15px_rgba(0,255,163,0.3)]' : 'border-border-subtle group-hover:border-accent-secondary group-hover:scale-110'
-                                    }`}
-                                >
-                                    {isCompleted && <CheckCircle2 size={16} className="text-bg-deep font-bold" />}
-                                </div>
-                                <div onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'DONE'); }} className="flex flex-col">
-                                    <span className={`text-[12px] font-bold uppercase tracking-wider ${isCompleted ? 'text-accent-secondary' : 'text-text-muted group-hover:text-white'}`}>Acknowledged</span>
-                                    <span className="text-[9px] text-text-muted opacity-50 font-mono">Include in package</span>
-                                </div>
-                            </label>
+                                    {/* Vertical Divider */}
+                                    <div className="w-[1px] h-12 bg-white/10 mx-2 shrink-0"></div>
 
-                            <label className="flex items-center gap-3 cursor-pointer group">
-                                <div 
-                                    onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'NA'); }}
-                                    className={`w-7 h-7 rounded-md border-2 flex items-center justify-center transition-all ${
-                                        isNA ? 'bg-text-muted border-text-muted' : 'border-border-subtle group-hover:border-white group-hover:scale-110'
-                                    }`}
-                                >
-                                    {isNA && <span className="text-[14px] text-bg-deep font-black">X</span>}
+                                    {/* DONE BUTTON */}
+                                    <div 
+                                        onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'DONE'); }}
+                                        className="flex flex-col items-center gap-2 cursor-pointer group px-4 py-2 rounded-xl hover:bg-white/5 transition-colors w-[90px]"
+                                    >
+                                        <span className={`text-xs font-black uppercase tracking-widest transition-colors ${isCompleted ? 'text-accent-secondary' : 'text-text-muted group-hover:text-white'}`}>DONE</span>
+                                        <div className={`w-10 h-10 shrink-0 border-2 rounded-md flex items-center justify-center transition-colors ${isCompleted ? 'bg-accent-secondary/20 border-accent-secondary shadow-[0_0_15px_rgba(0,255,163,0.3)]' : 'border-border-subtle bg-bg-deep group-hover:border-accent-secondary/50 group-hover:bg-white/5'}`}>
+                                            {isCompleted && <CheckCircle2 size={24} className="text-accent-secondary drop-shadow-[0_0_5px_rgba(0,255,163,0.8)]" />}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'NA'); }} className="flex flex-col">
-                                    <span className={`text-[12px] font-bold uppercase tracking-wider ${isNA ? 'text-text-muted' : 'text-text-muted group-hover:text-white'}`}>Not Applicable</span>
-                                    <span className="text-[9px] text-text-muted opacity-50 font-mono">Exclude from scope</span>
-                                </div>
-                            </label>
                             </div>
 
-                            {/* Sourcing Action (Conditional) */}
-                            {isCompleted && (
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('trigger-sourcing', { detail: { blockId } })); }}
-                                    className="btn-secondary !py-1.5 !px-3 !text-[10px] flex items-center gap-2 group/btn"
-                                >
-                                    <Box size={12} className="group-hover/btn:rotate-12 transition-transform" />
-                                    Find Cutsheet
-                                </button>
-                            )}
+                            {/* Render Body Lines */}
+                            <div className="pl-1">
+                                {blockLines.map((line, lineIdx) => {
+                                    const trimmed = line.trim();
+                                    
+                                    // Skip the first line if it was already rendered as the CSI Header above
+                                    if (lineIdx === 0 && /^[1-3]\.[0-9]{2}/.test(trimmed)) return null;
+                                    
+                                    let indentClass = "base-text";
+                                    
+                                    if (/^[A-Z]\./.test(trimmed)) indentClass = "indent-level-1";
+                                    else if (/^[0-9]+\./.test(trimmed)) indentClass = "indent-level-2 mt-1";
+                                    else if (/^[a-z]\./.test(trimmed)) indentClass = "indent-level-3";
+                                    else if (/^-/.test(trimmed)) indentClass = "indent-level-4";
+
+                                    return (
+                                        <div key={lineIdx} className={indentClass}>
+                                            {trimmed}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 );
@@ -210,6 +230,10 @@ function App() {
     const [shredProgress, setShredProgress] = useState(0)
     const [shredStatusMsg, setShredStatusMsg] = useState('Initializing...')
     const [isShredding, setIsShredding] = useState(false)
+    const [activeSourcingBlockId, setActiveSourcingBlockId] = useState(null)
+    const [sourcingProgressPct, setSourcingProgressPct] = useState(0)
+    // Tracks which Part 2 block the user has clicked — drives the right column display
+    const [selectedBlock, setSelectedBlock] = useState(null) // { blockKey, blockTitle, blockLines, blockIdx }
     const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false)
     const [newProjectStep, setNewProjectStep] = useState(1)
     const [customDivisionInput, setCustomDivisionInput] = useState('')
@@ -283,13 +307,14 @@ function App() {
                 confidence_score: 1.0 // manually added = 100% confidence
             };
 
-            const { error } = await supabase.from('spec_sections').insert([record]);
+            const { data, error } = await supabase.from('spec_sections').insert([record]).select();
             if (error) throw error;
 
-            // Update local state immediately
+            // Update local state immediately, ensuring we bind the actual database UUID to dbId
+            const dbRecord = data && data[0] ? data[0] : null;
             const newItem = {
                 id: addSectionData.sectionNumber.trim(),
-                dbId: null,
+                dbId: dbRecord ? dbRecord.id : null,
                 title: record.title,
                 type: 'Spec',
                 match: 100,
@@ -331,7 +356,7 @@ function App() {
     }, []);
 
     // Load sections for a specific project when user opens it
-    const loadProjectData = async (project, divisionFilter) => {
+    const loadProjectData = async (project, divisionFilter, preserveState = false) => {
         const { data: sections } = await supabase
             .from('spec_sections')
             .select('*')
@@ -356,8 +381,16 @@ function App() {
             divisions: deriveDivisions(uiItems)
         };
         setProjectData(updatedData);
-        setSelectedDivision(updatedData.divisions[0] || null);
-        setSelectedSpec(uiItems[0] || null);
+        
+        // Ensure we don't snap the user's view back to the top if we are just refreshing data
+        if (!preserveState) {
+            setSelectedDivision(updatedData.divisions[0] || null);
+            setSelectedSpec(uiItems[0] || null);
+        } else if (selectedSpec) {
+             // Keep current spec object updated with any new database metadata
+             const refreshedSpec = uiItems.find(i => i.id === selectedSpec.id);
+             if (refreshedSpec) setSelectedSpec(refreshedSpec);
+        }
     };
 
     // Dummy useEffect kept for structure - actual loading happens via loadProjectData
@@ -417,6 +450,7 @@ function App() {
             match: Math.round((s.confidence_score || 0) * 100),
             pageNumber: s.page_number,
             coordinates: s.coordinates,
+            metadata: s.metadata || {},   // ← includes sourcedProduct.cutsheetUrl from Supabase
             part1: s.part1_content || "No Part 1 content found.",
             part2: {
                 extractedSpecs: [
@@ -428,6 +462,7 @@ function App() {
             part3: s.part3_content || "No Part 3 content found."
         }))
     }
+
 
     const runAIShredder = async () => {
         setIsNewProjectModalOpen(false) 
@@ -857,7 +892,7 @@ function App() {
         setNaBlocks(newNA);
 
         // Persist to Supabase if we have a valid section
-        const specId = blockId.split('-')[0];
+        const specId = blockId.split('___')[0];
         const section = projectData.recentItems.find(s => s.id === specId);
         if (section?.dbId) {
             await supabase
@@ -884,54 +919,97 @@ function App() {
     // Live Sourcing Logic
     useEffect(() => {
         const handleTriggerSourcing = async (e) => {
-            const { blockId } = e.detail;
-            console.log('Sourcing for:', blockId);
+            const { blockId, blockKey, blockTitle, blockLines } = e.detail;
+            console.log('Sourcing for block:', blockTitle || blockId);
             
-            // 1. Identify query from block text
-            const specId = blockId.split('-')[0];
-            const section = projectData.recentItems.find(s => s.id === specId);
-            if (!section) return;
+            const section = selectedSpec;
+            if (!section) { console.warn('No section selected!'); return; }
 
-            // Simple heuristic to get the query from the block text
-            const query = section.title; // Default to title for now
+            // Use the specific block's text if provided, else fall back to full Part 2
+            const specTextForAI = blockLines || section.part2?.rawText || blockTitle || '';
+            const fallbackQuery = (blockTitle || section.title)
+                .replace(/^[1-3]\.[0-9]{2}\s*/, '')  // strip "2.05 " prefix
+                .replace(/\s*\([^)]*\)/g, '')          // strip parentheticals
+                .trim().slice(0, 80);
+
+            setActiveSourcingBlockId(section.id);
+            setSourcingProgressPct(0);
             
-            // Start Discovery animation
-            setIsShredding(true);
+            const progressTimer = setInterval(() => {
+                setSourcingProgressPct(prev => Math.min(prev + Math.floor(Math.random() * 8) + 2, 96));
+            }, 1000);
             
             try {
                 const prefs = JSON.stringify({ vendors, brands: manufacturers });
-                const res = await fetch(`http://localhost:3001/api/source?query=${encodeURIComponent(query)}&prefs=${encodeURIComponent(prefs)}`);
+                const params = new URLSearchParams({
+                    query: fallbackQuery,
+                    sectionTitle: blockTitle || section.title,  // use the specific block title
+                    specText: specTextForAI.slice(0, 3000),      // the block's own text for AI
+                    prefs
+                });
+                const res = await fetch(`http://localhost:3001/api/source?${params.toString()}`);
                 const data = await res.json();
                 
+                clearInterval(progressTimer);
+                setSourcingProgressPct(100);
+                
                 if (data.success && data.result?.cutsheetUrl) {
-                    alert(`Architect AI: Found product on ${data.result.vendor}!\nURL: ${data.result.cutsheetUrl}`);
-                    
-                    // Update section metadata in Supabase with the found cutsheet
-                    await supabase
+                    // IMMEDIATELY update selectedSpec so right column shows the iframe
+                    // Save at block level: metadata.sourcedBlocks[blockKey]
+                    const activeBlockKey = blockKey || blockTitle || blockId;
+                    setSelectedSpec(prev => ({
+                        ...prev,
+                        metadata: {
+                            ...prev?.metadata,
+                            sourcedBlocks: {
+                                ...(prev?.metadata?.sourcedBlocks || {}),
+                                [activeBlockKey]: data.result
+                            }
+                        }
+                    }));
+
+                    // Persist to Supabase in the background (non-blocking)
+                    const currentMeta = section.metadata || {};
+                    supabase
                         .from('spec_sections')
                         .update({ 
-                            metadata: { 
-                                ...section.metadata,
-                                sourcedProduct: data.result 
-                            } 
+                            metadata: {
+                                ...currentMeta,
+                                sourcedBlocks: {
+                                    ...(currentMeta.sourcedBlocks || {}),
+                                    [activeBlockKey]: data.result
+                                }
+                            }
                         })
-                        .eq('id', section.dbId);
+                        .eq('id', section.dbId)
+                        .then(() => {
+                            if (projectData) loadProjectData(projectData, null, true);
+                        });
 
-                    // Refresh local state (simple way)
-                    window.location.reload(); 
+                } else if (data.reason === 'no_product') {
+                    // AI flagged this block as a rule/requirement, not a product
+                    setSelectedBlock(prev => prev ? { ...prev, isRule: true } : prev);
                 } else {
-                    alert("Architect AI: Unable to find an automated match on preferred sites. Please verify manually.");
+                    const reason = data.message || `No direct PDF match found for "${blockTitle || section.title}".`;
+                    alert(`Architect AI: ${reason}`);
                 }
             } catch (err) {
                 console.error("Sourcing failed:", err);
+                clearInterval(progressTimer);
+                alert(`Architect AI Error: Ensure the backend server is running.\nDetails: ${err.message}`);
             } finally {
-                setIsShredding(false);
+                setTimeout(() => {
+                    setActiveSourcingBlockId(null);
+                }, 800);
             }
         };
 
         window.addEventListener('trigger-sourcing', handleTriggerSourcing);
         return () => window.removeEventListener('trigger-sourcing', handleTriggerSourcing);
-    }, [vendors, manufacturers, projectData]);
+    }, [vendors, manufacturers, projectData, selectedSpec, selectedDivision]);
+
+
+
 
     // Helper to calculate progress percentage for a specific spec and part
     const calculatePartProgress = (item, partKey) => {
@@ -974,17 +1052,37 @@ function App() {
     };
 
     const deleteProject = async (proj, e) => {
+        e.preventDefault();
         e.stopPropagation(); // Don't open the project when clicking delete
-        if (!window.confirm(`Delete "${proj.name}"? This will permanently remove all spec sections and data.`)) return;
         
-        // Cascade delete: remove sections first, then project
-        await supabase.from('spec_sections').delete().eq('project_id', proj.id);
-        const { error } = await supabase.from('projects').delete().eq('id', proj.id);
-        
-        if (!error) {
+        console.log("Attempting to delete project:", proj);
+        if (!proj.id) {
+            alert("Cannot delete this project - it does not have a valid database ID.");
+            return;
+        }
+
+        try {
+            // Because we added ON DELETE CASCADE to the Supabase foreign keys,
+            // we only need to delete the project here, and all related spec sections will follow.
+            const { data: deletedProj, error: projError } = await supabase
+                .from('projects')
+                .delete()
+                .eq('id', proj.id)
+                .select(); // Ask Supabase to return the row if it was successfully deleted
+            
+            if (projError) throw projError;
+            
+            if (!deletedProj || deletedProj.length === 0) {
+                // RLS or foreign key prevented deletion, but Supabase didn't throw a hard error
+                throw new Error("Supabase rejected the deletion. Make sure Row Level Security allows deletes on projects.");
+            }
+            
+            // Successfully removed from DB, now remove from UI
+            console.log("Deleted project:", deletedProj);
             setPortfolio(prev => prev.filter(p => p.id !== proj.id));
-        } else {
-            alert('Failed to delete project: ' + error.message);
+        } catch (err) {
+            console.error("Delete operation failed:", err);
+            alert('Failed to delete project: ' + (err.message || 'Unknown error. Check console.'));
         }
     };
 
@@ -1359,7 +1457,7 @@ function App() {
                         <div 
                             key={item.id} 
                             className={`item-card prism-card cursor-pointer transition-all ${selectedSpec?.id === item.id ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
-                            onClick={() => setSelectedSpec(item)}
+                            onClick={() => { setSelectedSpec(item); setSelectedBlock(null); }}
                         >
                             <div className="flex justify-between items-start mb-2">
                                 <span className="text-xs text-text-muted font-mono bg-black/20 px-2 py-1 rounded">{item.id}</span>
@@ -1519,6 +1617,8 @@ function App() {
                                             completedBlocks={completedBlocks}
                                             naBlocks={naBlocks}
                                             onToggleBlock={toggleBlockCompletion}
+                                            onBlockSelect={(block) => setSelectedBlock(block)}
+                                            selectedBlockKey={selectedBlock?.blockKey}
                                         />
                                             </div>
                                         ) : (
@@ -1528,46 +1628,115 @@ function App() {
                                         )}
                                     </div>
                                 )}
+                                </div>
                             </div>
-                        </div>
 
-                        {/* PDF Preview Side */}
-                        <div className="pdf-preview-prism h-full flex flex-col">
-                            <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0">
-                                <span className="text-xs font-bold text-text-muted"><FileText size={12} className="inline mr-1" /> JCMUPRC_SPEC.PDF</span>
-                                <span className="text-[10px] text-text-muted">Page {selectedSpec.pageNumber || 1}</span>
-                            </div>
-                                <div className="pdf-canvas flex-1 relative bg-bg-deep flex items-center justify-center overflow-hidden">
-                                    {/* Mock PDF Background */}
-                                    <div className="w-full h-full opacity-10 flex flex-col gap-4 p-8">
-                                        {[...Array(20)].map((_, i) => (
-                                            <div key={i} className="h-2 bg-white rounded" style={{width: `${Math.random() * 60 + 40}%`}}></div>
-                                        ))}
-                                    </div>
-                                    
-                                    {/* Real-time Highlighting Overlay */}
-                                    {selectedSpec.coordinates && (
-                                        <div 
-                                            className="highlight-box absolute border-2 border-accent-primary bg-accent-primary/10 animate-pulse pointer-events-none"
-                                            style={{
-                                                top: '20%', // In a real viewer, we'd map PDF Y to pixel Y
-                                                left: `${(selectedSpec.coordinates.x / 612) * 100}%`,
-                                                width: `${(selectedSpec.coordinates.w / 612) * 100}%`,
-                                                height: '24px'
-                                            }}
-                                        >
-                                            {selectedSpec.id}
+                        {/* Dynamic PDF Preview / Sourcing Tracker Side */}
+                        {/* Shows: (1) spinner when sourcing, (2) block cut sheet when selected+sourced, (3) placeholder otherwise */}
+                        {(() => {
+                            const blockCutsheet = selectedBlock?.blockKey 
+                                ? selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
+                                : null;
+                            const isSourced = !!blockCutsheet?.cutsheetUrl;
+                            const isSourcing = activeSourcingBlockId === selectedSpec.id;
+                            const isRule = selectedBlock?.isRule;
+                            return (
+                            <div className="pdf-preview-prism h-full flex flex-col border-l border-border-subtle bg-bg-deeper">
+                                <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
+                                    <span className="text-xs font-bold text-text-muted flex items-center">
+                                        <FileText size={14} className="mr-2 text-accent-primary" /> 
+                                        {isSourcing ? "SOURCING ENGINE ACTIVE"
+                                            : isSourced ? "VENDOR CUT SHEET REVIEW"
+                                            : selectedBlock ? selectedBlock.blockTitle.slice(0, 40)
+                                            : "SELECT A BLOCK TO VIEW CUT SHEET"}
+                                    </span>
+                                    <span className="text-[10px] uppercase font-bold text-text-muted bg-white/5 py-1 px-3 rounded-full">
+                                        {isSourcing ? "PROCESSING"
+                                            : isSourced ? blockCutsheet.vendor
+                                            : selectedBlock ? "AWAITING SOURCE"
+                                            : `PAGE ${selectedSpec.pageNumber || 1}`}
+                                    </span>
+                                </div>
+                                
+                                <div className="pdf-canvas flex-1 relative flex items-center justify-center overflow-hidden">
+                                    {isSourcing ? (
+                                        <div className="flex flex-col items-center justify-center p-12 text-center animate-fade-in w-full max-w-md">
+                                            <div className="relative mb-8">
+                                                <div className="w-24 h-24 border-[4px] border-bg-deep rounded-full"></div>
+                                                <div 
+                                                    className="w-24 h-24 border-[4px] border-accent-secondary rounded-full absolute top-0 left-0 transition-all duration-500 ease-out"
+                                                    style={{ clipPath: `inset(0 0 ${100 - sourcingProgressPct}% 0)` }}
+                                                ></div>
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <span className="text-xl font-black text-accent-secondary">{sourcingProgressPct}%</span>
+                                                </div>
+                                            </div>
+                                            <h3 className="text-2xl font-black mb-2 tracking-tight uppercase">Searching for Cut Sheets</h3>
+                                            <p className="text-text-muted text-sm mb-8 line-clamp-2 leading-relaxed">Cross-referencing parameters for:<br/><strong className="text-white mt-1 block">{selectedBlock?.blockTitle || selectedSpec.title}</strong></p>
+                                            <div className="w-full bg-black/30 h-2 rounded-full overflow-hidden border border-white/5 relative">
+                                                <div className="h-full bg-gradient-to-r from-accent-primary to-accent-secondary transition-all duration-500 ease-out shine-effect rounded-full" style={{ width: `${sourcingProgressPct}%` }}></div>
+                                            </div>
+                                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-[0.2em] mt-4">Autonomous Search &amp; Rescue Engine</p>
                                         </div>
+                                    ) : isRule ? (
+                                        <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">
+                                            <div className="w-16 h-16 rounded-full border-2 border-text-muted/30 flex items-center justify-center mb-6">
+                                                <FileText size={28} className="text-text-muted" />
+                                            </div>
+                                            <h4 className="font-bold text-sm uppercase tracking-widest text-text-muted mb-3">Specification Rule</h4>
+                                            <p className="text-text-muted text-xs leading-relaxed">This block defines requirements and sizing rules that apply to other products in this section. No cut sheet is needed — these requirements will be used when verifying other products.</p>
+                                        </div>
+                                    ) : isSourced ? (
+                                        <div className="w-full h-full p-2 bg-black/20 animate-fade-in">
+                                            <iframe 
+                                                src={blockCutsheet.cutsheetUrl} 
+                                                className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
+                                                title="Vendor Cut Sheet"
+                                            />
+                                        </div>
+                                    ) : selectedBlock ? (
+                                        <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">
+                                            <div className="w-16 h-16 rounded-full border-2 border-dashed border-accent-primary/30 flex items-center justify-center mb-6">
+                                                <Search size={28} className="text-accent-primary" />
+                                            </div>
+                                            <h4 className="font-bold text-sm uppercase tracking-widest text-accent-primary mb-3">Ready to Source</h4>
+                                            <p className="text-text-muted text-xs leading-relaxed mb-6">Click "Find Cutsheet" on the block to search vendors for this item.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Mock PDF Background */}
+                                            <div className="w-full h-full opacity-10 flex flex-col gap-4 p-8">
+                                                {[...Array(20)].map((_, i) => (
+                                                    <div key={i} className="h-2 bg-white rounded" style={{width: `${Math.random() * 60 + 40}%`}}></div>
+                                                ))}
+                                            </div>
+                                            
+                                            {/* Real-time Highlighting Overlay */}
+                                            {selectedSpec.coordinates && (
+                                                <div 
+                                                    className="highlight-box absolute border-2 border-accent-primary bg-accent-primary/10 animate-pulse pointer-events-none"
+                                                    style={{
+                                                        top: '20%', 
+                                                        left: `${(selectedSpec.coordinates.x / 612) * 100}%`,
+                                                        width: `${(selectedSpec.coordinates.w / 612) * 100}%`,
+                                                        height: '24px'
+                                                    }}
+                                                >
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
+                            );
+                        })()}
                         </div>
-                        )}
+              )}
                     </div>
                 </div>
                 ) : (
                     <div className="workbench-main prism-card flex flex-col items-center justify-center text-text-muted h-full">
-                        <FileSearch size={48} className="mb-4 opacity-50" />
+                        <FileSearch size={48} className="mb-4" />
                         <h3 className="text-lg font-bold">Select a specification section</h3>
                         <p className="text-sm">Run the AI Shredder to extract data from the PDF</p>
                     </div>
@@ -1661,7 +1830,7 @@ function App() {
                         <div className="logo-prism">SA</div>
                     </div>
                     <nav className="rail-icons">
-                        <button className={`rail-btn ${view === 'portfolio' ? 'active' : ''}`} onClick={() => { 
+                        <button className={`rail-btn ${view === 'portfolio' ? 'active' : ''}`} title="Portfolio (All Projects)" onClick={() => { 
                             setView('portfolio'); 
                             setActiveProject(null); 
                             setSelectedDivision(null);
@@ -1669,20 +1838,20 @@ function App() {
                         }}>
                             <Briefcase size={20} />
                         </button>
-                        <button className={`rail-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => { if(activeProject) setView('dashboard') }} disabled={!activeProject}>
+                        <button className={`rail-btn ${view === 'dashboard' ? 'active' : ''}`} title="Project Dashboard" onClick={() => { if(activeProject) setView('dashboard') }} disabled={!activeProject}>
                             <LayoutDashboard size={20} />
                         </button>
-                        <button className={`rail-btn ${view === 'workbench' ? 'active' : ''}`} onClick={() => { if(selectedDivision) setView('workbench') }} disabled={!selectedDivision}>
+                        <button className={`rail-btn ${view === 'workbench' ? 'active' : ''}`} title="Architect Workbench" onClick={() => { if(selectedDivision) setView('workbench') }} disabled={!selectedDivision}>
                             <FileSearch size={20} />
                         </button>
-                        <button className={`rail-btn ${view === 'sourcing-settings' ? 'active' : ''}`} onClick={() => setView('sourcing-settings')}>
+                        <button className={`rail-btn ${view === 'sourcing-settings' ? 'active' : ''}`} title="Sourcing Settings" onClick={() => setView('sourcing-settings')}>
                             <Search size={20} />
                         </button>
-                        <button className="rail-btn"><ClipboardCheck size={20} /></button>
+                        <button className="rail-btn" title="Submittal Output (Coming Soon)" disabled style={{opacity: 0.3}}><ClipboardCheck size={20} /></button>
                     </nav>
                     <div className="rail-footer">
-                        <button className="rail-btn"><Settings size={20} /></button>
-                        <div className="user-avatar"></div>
+                        <button className="rail-btn" title="Settings (Coming Soon)" disabled style={{opacity: 0.3}}><Settings size={20} /></button>
+                        <div className="user-avatar" title="User Profile"></div>
                     </div>
                 </aside>
 
@@ -1717,7 +1886,7 @@ function App() {
             {renderNewProjectModal()}
             {renderAddSectionModal()}
 
-            {/* Global Shredding Overlay */}
+        {/* Global Shredding Overlay */}
             {isShredding && view !== 'workbench' && (
                 <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg-deep/90 backdrop-blur-xl animate-fade-in">
                     <div className="max-w-xl w-full p-12 prism-card border-accent-primary/30 text-center shadow-[0_0_100px_rgba(255,107,0,0.1)]">

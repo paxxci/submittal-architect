@@ -44,20 +44,37 @@ class SourcingEngine {
                 await page.waitForTimeout(1000);
             }
 
-            // 2. Identify Product Link
+            // 2. Try to find first product link — check for h2, product cards, or any result
             console.log('Locating first product...');
-            const firstH2 = page.locator('h2:visible').first();
+            let clickedProduct = false;
+            
+            // Strategy A: Wait for visible h2 (fastest)
             try {
-                await firstH2.waitFor({ state: 'visible', timeout: 30000 });
-                console.log(`Found product title: ${await firstH2.innerText()}`);
+                const firstH2 = page.locator('h2:visible').first();
+                await firstH2.waitFor({ state: 'visible', timeout: 12000 });
+                const title = await firstH2.innerText();
+                console.log(`Found product title via h2: ${title}`);
                 await firstH2.click();
+                clickedProduct = true;
             } catch (e) {
-                console.log('Timeout waiting for visible product title (h2).');
-                const debugPath = 'e:\\Antigravity google\\Submittal Architect\\.tmp\\failure_screenshot.png';
-                await page.screenshot({ path: debugPath });
-                console.log(`Saved failure screenshot to: ${debugPath}`);
+                console.log('h2 not found, trying product link fallback...');
+            }
+            
+            // Strategy B: Find any product anchor link
+            if (!clickedProduct) {
+                const productLink = page.locator('a[href*="/product/"], a[href*="/p/"], .product-title a, .product-name a').first();
+                if (await productLink.count() > 0) {
+                    console.log('Clicking product link (fallback)...');
+                    await productLink.click();
+                    clickedProduct = true;
+                }
+            }
+            
+            if (!clickedProduct) {
+                console.log(`No products found on Platt for query: "${query}"`);
                 return null;
             }
+
 
             // 3. Extract from Product Detail Page (PDP)
             console.log('Navigating to PDP...');
