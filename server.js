@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const DiscoveryEngine = require('./src/logic/discovery_engine');
+const AIShredder = require('./src/logic/ai_shredder');
 
 const app = express();
 const PORT = 3001;
@@ -88,16 +89,33 @@ app.get('/api/shred', async (req, res) => {
                     const num = (s.id || '').replace(/\s/g,'');
                     if (num.length < 4 || num.length > 10) return false;
                     const div = parseInt(num.substring(0, 2));
-                    // Reject Division 00 (procurement), reject anything > 49
                     if (div === 0 || div > 49) return false;
-                    // Must have at least some content (not just a header line)
                     if ((s.rawContent || '').length < 50) return false;
                     return true;
                 });
 
                 console.log(`[API] After filtering: ${validSections.length} valid sections (from ${sections.length} raw)`);
 
-                const records = validSections.map(s => ({
+                // ── AI Enrichment Pass ──
+                // Run AI shredder on electrical sections to pre-compute block metadata.
+                // Non-electrical sections skip this to save tokens (they're informational only).
+                let enrichedSections = validSections;
+                if (process.env.OPENROUTER_API_KEY) {
+                    jobs[jobId].status = 'ai_enriching';
+                    const electricalSections = validSections.filter(s => s.isElectrical && s.part2 && s.part2.length > 30);
+                    const nonElectrical = validSections.filter(s => !s.isElectrical || !s.part2 || s.part2.length <= 30);
+
+                    console.log(`[API] AI Shredder: enriching ${electricalSections.length} electrical sections...`);
+                    const aiShredder = new AIShredder(process.env.OPENROUTER_API_KEY);
+                    const enriched = await aiShredder.enrichSections(electricalSections, 3);
+
+                    enrichedSections = [...enriched, ...nonElectrical];
+                    console.log(`[API] AI Shredder complete.`);
+                } else {
+                    console.warn('[API] No OPENROUTER_API_KEY — skipping AI enrichment pass.');
+                }
+
+                const records = enrichedSections.map(s => ({
                     project_id: projectId,
                     section_id: s.id,
                     section_number: s.number,
@@ -109,7 +127,8 @@ app.get('/api/shred', async (req, res) => {
                     part2_content: s.part2 || '',
                     part3_content: s.part3 || '',
                     raw_content: s.rawContent || '',
-                    confidence_score: s.isElectrical ? 0.95 : 0.60
+                    confidence_score: s.isElectrical ? 0.95 : 0.60,
+                    ai_blocks: s.aiBlocks ? JSON.stringify(s.aiBlocks) : null
                 }));
 
                 const { error } = await supabase
@@ -154,42 +173,60 @@ const SourcingEngine = require('./src/logic/sourcing_engine');
 const AIEngine = require('./src/logic/ai_engine');
 
 app.get('/api/source', async (req, res) => {
-    const { query, sectionTitle, specText, prefs } = req.query;
+    const { query, sectionTitle, specText, prefs, aiBlockData } = req.query;
     console.log(`\n--- [API] Sourcing Request ---`);
     console.log(`Block: "${sectionTitle || query}"`);
 
-    const CONFIDENCE_MIN = 0.6; // Below this → try next vendor / flag for review
+    const CONFIDENCE_MIN = 0.6;
 
     try {
         const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'] };
 
-        // ── STEP 1: AI reads block → extracts product type, requirements, manufacturers ──
+        // ── STEP 1: Get block info — use pre-computed data if available, else call AI ──
         let searchQuery = query;
-        let aiResult = null;
+        let keyRequirements = [];
+        let manufacturers = [];
 
-        if (!process.env.OPENROUTER_API_KEY) {
+        if (aiBlockData) {
+            // Pre-computed at parse time by AIShredder — no need to call AI again
+            const parsed = JSON.parse(aiBlockData);
+            keyRequirements = parsed.keyRequirements || [];
+            manufacturers = parsed.manufacturers || [];
+            // Build a smart search query: "manufacturer product block-title"
+            const mfgPrefix = manufacturers.length > 0 ? manufacturers[0] + ' ' : '';
+            searchQuery = mfgPrefix + (parsed.summary || query);
+            console.log(`[AI] Using pre-computed block data. Reqs: ${keyRequirements.join(', ') || '(none)'}`);
+
+            if (parsed.isProduct === false) {
+                return res.json({
+                    success: false,
+                    reason: 'no_product',
+                    message: 'This block defines requirements or installation methods — no cut sheet needed.'
+                });
+            }
+        } else if (!process.env.OPENROUTER_API_KEY) {
             console.warn('[AI] No OPENROUTER_API_KEY — using raw query fallback.');
             const engine = new SourcingEngine();
             const candidates = await engine.getPlattCandidates(query);
             const pdp = candidates.length > 0 ? await engine.getPlattPDP(candidates[0].href, query) : null;
             await engine.shutdown();
             return res.json({ success: !!pdp?.cutsheetUrl, result: pdp });
-        }
+        } else {
+            // No pre-computed data — run AI extraction now
+            const ai = new AIEngine(process.env.OPENROUTER_API_KEY);
+            console.log('[AI] Extracting product info from spec block...');
+            const aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
+            searchQuery = aiResult.searchQuery;
+            keyRequirements = aiResult.keyRequirements || [];
+            manufacturers = aiResult.manufacturers || [];
 
-        const ai = new AIEngine(process.env.OPENROUTER_API_KEY);
-        console.log('[AI] Extracting product info from spec block...');
-        aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
-        searchQuery = aiResult.searchQuery;
-        const keyRequirements = aiResult.keyRequirements || [];
-        const manufacturers = aiResult.manufacturers || [];
-
-        // Rule/requirement block — no physical product needed
-        if (aiResult.isProductSection === false) {
-            return res.json({
-                success: false,
-                reason: 'no_product',
-                message: 'This block defines requirements or installation methods — no cut sheet needed.'
-            });
+            if (aiResult.isProductSection === false) {
+                return res.json({
+                    success: false,
+                    reason: 'no_product',
+                    message: 'This block defines requirements or installation methods — no cut sheet needed.'
+                });
+            }
         }
 
         console.log(`[AI] Search query: "${searchQuery}"`);
