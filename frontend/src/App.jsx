@@ -1634,12 +1634,17 @@ function App() {
                         {/* Dynamic PDF Preview / Sourcing Tracker Side */}
                         {/* Shows: (1) spinner when sourcing, (2) block cut sheet when selected+sourced, (3) placeholder otherwise */}
                         {(() => {
+                            // Check block-level storage first (new format)
+                            // Fall back to section-level sourcedProduct (old format) for backward compat
                             const blockCutsheet = selectedBlock?.blockKey 
-                                ? selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
+                                ? (selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
+                                   || selectedSpec.metadata?.sourcedProduct)  // ← backward compat
                                 : null;
                             const isSourced = !!blockCutsheet?.cutsheetUrl;
                             const isSourcing = activeSourcingBlockId === selectedSpec.id;
                             const isRule = selectedBlock?.isRule;
+                            const candidates = blockCutsheet?.candidates || [];
+                            const selectionReason = blockCutsheet?.selectionReason || null;
                             return (
                             <div className="pdf-preview-prism h-full flex flex-col border-l border-border-subtle bg-bg-deeper">
                                 <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
@@ -1687,12 +1692,51 @@ function App() {
                                             <p className="text-text-muted text-xs leading-relaxed">This block defines requirements and sizing rules that apply to other products in this section. No cut sheet is needed — these requirements will be used when verifying other products.</p>
                                         </div>
                                     ) : isSourced ? (
-                                        <div className="w-full h-full p-2 bg-black/20 animate-fade-in">
-                                            <iframe 
-                                                src={blockCutsheet.cutsheetUrl} 
-                                                className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
-                                                title="Vendor Cut Sheet"
-                                            />
+                                        <div className="flex flex-col h-full animate-fade-in">
+                                            {/* Price + source badge at top */}
+                                            {(blockCutsheet.price || candidates.length > 1 || selectionReason) && (
+                                                <div className="shrink-0 px-3 py-2 bg-accent-secondary/10 border-b border-accent-secondary/20 flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        {blockCutsheet.price && (
+                                                            <span className="text-accent-secondary font-black text-sm">
+                                                                {blockCutsheet.price}
+                                                            </span>
+                                                        )}
+                                                        {candidates.length > 1 && (
+                                                            <span className="text-[10px] text-accent-secondary/70 bg-accent-secondary/10 px-2 py-0.5 rounded-full border border-accent-secondary/20">
+                                                                🏆 Lowest price from {candidates.length} vendors
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</span>
+                                                </div>
+                                            )}
+                                            {/* PDF iframe */}
+                                            <div className="flex-1 p-2 bg-black/20 min-h-0">
+                                                <iframe 
+                                                    src={blockCutsheet.cutsheetUrl} 
+                                                    className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
+                                                    title="Vendor Cut Sheet"
+                                                />
+                                            </div>
+                                            {/* Candidates list */}
+                                            {candidates.length > 1 && (
+                                                <div className="shrink-0 p-2 border-t border-border-subtle bg-bg-deeper">
+                                                    <p className="text-[9px] text-text-muted uppercase tracking-widest mb-1.5 font-bold">All Candidates</p>
+                                                    <div className="flex flex-col gap-1">
+                                                        {candidates.map((c, i) => (
+                                                            <div key={i} className={`flex justify-between items-center text-[10px] px-2 py-1 rounded ${
+                                                                c.cutsheetUrl === blockCutsheet.cutsheetUrl 
+                                                                    ? 'bg-accent-secondary/15 text-accent-secondary' 
+                                                                    : 'text-text-muted'
+                                                            }`}>
+                                                                <span>{c.searchedBrand || c.vendorShort}</span>
+                                                                <span className="font-mono">{c.price || '—'}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : selectedBlock ? (
                                         <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">

@@ -161,45 +161,63 @@ app.get('/api/source', async (req, res) => {
     try {
         const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'] };
         
-        // STEP 1: Use Gemini AI to read the spec text and extract a clean search query
-        let searchQuery = query; // fallback if no API key
+        // STEP 1: AI reads spec text → extracts product type, manufacturers, requirements
+        let searchQuery = query;
         let aiResult = null;
         
         if (process.env.OPENROUTER_API_KEY) {
-            console.log('[AI] Reading spec text with Gemini via OpenRouter...');
+            console.log('[AI] Reading spec text with Gemini...');
             const ai = new AIEngine(process.env.OPENROUTER_API_KEY);
-            aiResult = await ai.extractSearchQuery(
-                sectionTitle || query,
-                specText || query
-            );
+            aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
             searchQuery = aiResult.searchQuery;
-            console.log(`[AI] Clean search query: "${searchQuery}"`);
-            
-            // If AI says this section has no physical product, skip scraping
+
+            // Rule/requirement block — no product to source
             if (aiResult.isProductSection === false) {
                 return res.json({ 
                     success: false, 
                     reason: 'no_product',
-                    message: 'This spec section does not describe a physical product that needs a cut sheet.' 
+                    message: 'This block defines requirements and sizing rules — no cut sheet needed.'
                 });
             }
+
+            const manufacturers = aiResult.manufacturers || [];
+            console.log(`[AI] Manufacturers found: ${manufacturers.length > 0 ? manufacturers.join(', ') : '(none)'}`);
+
+            // STEP 2A: Multi-manufacturer pipeline (price comparison)
+            // For each listed brand: search Platt → North Coast → manufacturer direct
+            // Then pick the lowest-priced winner.
+            const engine = new SourcingEngine();
+            let result;
+
+            if (manufacturers.length > 0) {
+                console.log('[Sourcing] Running multi-manufacturer price comparison...');
+                result = await engine.multiManufacturerSource(searchQuery, manufacturers, preferences);
+            } else {
+                // No brands listed — simple tiered search
+                console.log('[Sourcing] No manufacturers listed — running simple tiered search...');
+                result = await engine.tieredSource(searchQuery, preferences);
+            }
+
+            await engine.shutdown();
+
+            if (result) {
+                result.aiExtractedQuery = searchQuery;
+                result.keyRequirements = aiResult.keyRequirements || [];
+                result.productType = aiResult.productType || sectionTitle;
+                result.specManufacturers = manufacturers;
+            }
+
+            return res.json({ success: !!result, result: result || null });
+
         } else {
-            console.warn('[AI] No GEMINI_API_KEY set — using raw query as fallback.');
+            // No API key — simple fallback with raw query
+            console.warn('[AI] No OPENROUTER_API_KEY — using raw query fallback.');
+            const engine = new SourcingEngine();
+            const result = await engine.tieredSource(searchQuery, preferences);
+            await engine.shutdown();
+            return res.json({ success: !!result, result: result || null });
         }
-        
-        // STEP 2: Run the tiered vendor scraper with the AI-extracted query
-        const engine = new SourcingEngine();
-        const result = await engine.tieredSource(searchQuery, preferences);
-        await engine.shutdown();
-        
-        // STEP 3: Attach AI metadata to the result
-        if (result) {
-            result.aiExtractedQuery = searchQuery;
-            result.keyRequirements = aiResult?.keyRequirements || [];
-            result.productType = aiResult?.productType || sectionTitle;
-        }
-        
-        res.json({ success: true, result });
+
     } catch (error) {
         console.error('[API] Sourcing Error:', error);
         res.status(500).json({ success: false, error: error.message });
