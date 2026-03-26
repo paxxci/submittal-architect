@@ -1043,7 +1043,8 @@ function App() {
 
         let completedCount = 0;
         for (let i = 0; i < totalBlocks; i++) {
-            const bId = `${specId}-${partId}-${i}`;
+            // Must match FormattedSpecText blockId format: `${specId}___${partId}___${blockIdx}`
+            const bId = `${specId}___${partId}___${i}`;
             if (completedBlocks.includes(bId) || naBlocks.includes(bId)) {
                 completedCount++;
             }
