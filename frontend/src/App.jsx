@@ -77,7 +77,7 @@ const MOCK_PORTFOLIO = [
 ];
 
 // Helper Component to Format Raw Specification Text
-const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey }) => {
+const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey, aiBlocks }) => {
     if (!text) return null;
     
     const lines = text.split('\n');
@@ -106,6 +106,8 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                 const blockTitle = blockLines[0]?.trim() || 'GENERAL SECTION';
                 const blockKey = blockTitle.slice(0, 80);
                 const isSelected = selectedBlockKey === blockKey;
+                // Pre-computed AI block data from parse time (if available)
+                const aiBlockData = aiBlocks ? aiBlocks[blockKey] || null : null;
                 const isCompleted = completedBlocks?.includes(blockId);
                 const isNA = naBlocks?.includes(blockId);
                 const isGreen = isCompleted || isNA;
@@ -152,7 +154,7 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                                     // Select this block so right column knows which cut sheet to show
                                                     onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx });
                                                     window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
-                                                        detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n') } 
+                                                        detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n'), aiBlockData } 
                                                     })); 
                                                 }
                                             }}
@@ -442,25 +444,46 @@ function App() {
 
     // Helper to map our backend models to the UI model
     const mapShreddedDataToUI = (sections) => {
-        return sections.map(s => ({
-            id: s.section_number, 
-            dbId: s.id,
-            title: s.title,
-            type: 'Spec',
-            match: Math.round((s.confidence_score || 0) * 100),
-            pageNumber: s.page_number,
-            coordinates: s.coordinates,
-            metadata: s.metadata || {},   // ← includes sourcedProduct.cutsheetUrl from Supabase
-            part1: s.part1_content || "No Part 1 content found.",
-            part2: {
-                extractedSpecs: [
-                    { trait: "Data Source", value: "Surgical Shredder v2", verified: s.confidence_score > 0.9 }
-                ],
-                insight: s.confidence_score > 0.9 ? "High confidence electrical section detected." : "Semantic match: Review for electrical intent.",
-                rawText: s.part2_content || "No Part 2 content found."
-            },
-            part3: s.part3_content || "No Part 3 content found."
-        }))
+        return sections.map(s => {
+            // Build aiBlockMap from stored ai_blocks JSON for O(1) lookup per block
+            let aiBlockMap = null;
+            if (s.ai_blocks) {
+                const blocks = typeof s.ai_blocks === 'string' ? JSON.parse(s.ai_blocks) : s.ai_blocks;
+                if (Array.isArray(blocks) && blocks.length > 0) {
+                    aiBlockMap = {};
+                    for (const block of blocks) {
+                        const key = (block.blockTitle || '').trim().slice(0, 80);
+                        aiBlockMap[key] = {
+                            isProduct: block.isProduct !== false,
+                            manufacturers: block.manufacturers || [],
+                            keyRequirements: block.keyRequirements || [],
+                            summary: block.summary || ''
+                        };
+                    }
+                }
+            }
+
+            return {
+                id: s.section_number, 
+                dbId: s.id,
+                title: s.title,
+                type: 'Spec',
+                match: Math.round((s.confidence_score || 0) * 100),
+                pageNumber: s.page_number,
+                coordinates: s.coordinates,
+                metadata: s.metadata || {},
+                aiBlockMap,   // ← pre-computed block map from AI shredder
+                part1: s.part1_content || "No Part 1 content found.",
+                part2: {
+                    extractedSpecs: [
+                        { trait: "Data Source", value: "Surgical Shredder v2", verified: s.confidence_score > 0.9 }
+                    ],
+                    insight: s.confidence_score > 0.9 ? "High confidence electrical section detected." : "Semantic match: Review for electrical intent.",
+                    rawText: s.part2_content || "No Part 2 content found."
+                },
+                part3: s.part3_content || "No Part 3 content found."
+            };
+        });
     }
 
 
@@ -919,8 +942,9 @@ function App() {
     // Live Sourcing Logic
     useEffect(() => {
         const handleTriggerSourcing = async (e) => {
-            const { blockId, blockKey, blockTitle, blockLines } = e.detail;
+            const { blockId, blockKey, blockTitle, blockLines, aiBlockData } = e.detail;
             console.log('Sourcing for block:', blockTitle || blockId);
+            if (aiBlockData) console.log('[AI] Pre-computed block data found — skipping AI extraction.');
             
             const section = selectedSpec;
             if (!section) { console.warn('No section selected!'); return; }
@@ -943,10 +967,12 @@ function App() {
                 const prefs = JSON.stringify({ vendors, brands: manufacturers });
                 const params = new URLSearchParams({
                     query: fallbackQuery,
-                    sectionTitle: blockTitle || section.title,  // use the specific block title
-                    specText: specTextForAI.slice(0, 3000),      // the block's own text for AI
+                    sectionTitle: blockTitle || section.title,
+                    specText: specTextForAI.slice(0, 3000),
                     prefs
                 });
+                // Pass pre-computed AI block data if available (avoids re-parsing at click time)
+                if (aiBlockData) params.set('aiBlockData', JSON.stringify(aiBlockData));
                 const res = await fetch(`http://localhost:3001/api/source?${params.toString()}`);
                 const data = await res.json();
                 
@@ -1583,9 +1609,9 @@ function App() {
                                 <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                                 {selectedPart === 'part1' && (
                                     <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
-                                        <FormattedSpecText 
-                                            text={selectedSpec.part1} 
-                                            specId={selectedSpec.id} 
+                                        <FormattedSpecText
+                                            text={selectedSpec.part1}
+                                            specId={selectedSpec.id}
                                             partId="part1"
                                             completedBlocks={completedBlocks}
                                             naBlocks={naBlocks}
@@ -1593,7 +1619,7 @@ function App() {
                                         />
                                     </div>
                                 )}
-                                
+
                                 {selectedPart === 'part3' && (
                                     <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
                                         <FormattedSpecText 
@@ -1620,6 +1646,7 @@ function App() {
                                             onToggleBlock={toggleBlockCompletion}
                                             onBlockSelect={(block) => setSelectedBlock(block)}
                                             selectedBlockKey={selectedBlock?.blockKey}
+                                            aiBlocks={selectedSpec.aiBlockMap || null}
                                         />
                                             </div>
                                         ) : (

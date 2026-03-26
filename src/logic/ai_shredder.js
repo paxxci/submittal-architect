@@ -25,11 +25,61 @@ class AIShredder {
      */
     async enrichSection(section) {
         if (!this.apiKey) return section;
-        if (!section.part2 || section.part2.length < 30) return section; // Nothing in Part 2 to analyze
+        if (!section.part2 || section.part2.length < 30) return section;
 
         try {
-            const result = await this._analyzeSection(section);
-            return { ...section, ...result };
+            const MAX_CHARS = 6000;
+            if (section.part2.length <= MAX_CHARS) {
+                // Short enough — send in one shot
+                const result = await this._analyzeSection(section);
+                return { ...section, ...result };
+            }
+
+            // Long section — chunk at natural block boundaries (lines starting with 2.XX)
+            console.log(`[AIShredder] Section ${section.id} Part 2 is ${section.part2.length} chars — chunking...`);
+            const lines = section.part2.split('\n');
+            const chunks = [];
+            let currentChunk = [];
+            let currentLen = 0;
+
+            for (const line of lines) {
+                const isBlockHeader = /^\s*2\.\d{2}/.test(line);
+                if (isBlockHeader && currentLen > 3000) {
+                    // Start a new chunk at this block boundary
+                    chunks.push(currentChunk.join('\n'));
+                    currentChunk = [line];
+                    currentLen = line.length;
+                } else {
+                    currentChunk.push(line);
+                    currentLen += line.length;
+                }
+            }
+            if (currentChunk.length > 0) chunks.push(currentChunk.join('\n'));
+
+            console.log(`[AIShredder] Section ${section.id} split into ${chunks.length} chunks`);
+
+            // Analyze each chunk and merge results
+            const allBlocks = [];
+            for (const chunk of chunks) {
+                const chunkSection = { ...section, part2: chunk };
+                const result = await this._analyzeSection(chunkSection);
+                if (result.aiBlocks) allBlocks.push(...result.aiBlocks);
+            }
+
+            const merged = { ...section };
+            merged.aiBlocks = allBlocks;
+            merged.aiBlockMap = {};
+            for (const block of allBlocks) {
+                const key = (block.blockTitle || '').trim().slice(0, 80);
+                merged.aiBlockMap[key] = {
+                    isProduct: block.isProduct !== false,
+                    manufacturers: block.manufacturers || [],
+                    keyRequirements: block.keyRequirements || [],
+                    summary: block.summary || ''
+                };
+            }
+            return merged;
+
         } catch (err) {
             console.error(`[AIShredder] Failed to enrich section ${section.id}: ${err.message}`);
             return section; // Graceful degradation — keep original regex parse
