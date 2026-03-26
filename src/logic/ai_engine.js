@@ -106,6 +106,97 @@ Respond ONLY as valid JSON with these exact fields:
     }
 
     /**
+     * Step 2 of Sourcing Pipeline (NEW):
+     * Given a list of product candidates from a vendor search page,
+     * score each one against the spec block's requirements and pick the best match.
+     *
+     * @param {Array} candidates - [{ title, description, href }] from search results
+     * @param {string} blockTitle - The spec block title (e.g. "2.01 WALL SWITCHES")
+     * @param {string[]} keyRequirements - Requirements extracted from the spec block
+     * @param {string[]} approvedManufacturers - Brand names from the spec (may be empty)
+     * @returns {{ selectedIndex, confidence, matchedRequirements, unmatchedRequirements, reason }}
+     */
+    async selectBestProduct(candidates, blockTitle, keyRequirements = [], approvedManufacturers = []) {
+        if (!candidates || candidates.length === 0) {
+            return null;
+        }
+
+        // If no specific requirements, just pick the first result (generic spec)
+        if (keyRequirements.length === 0 && approvedManufacturers.length === 0) {
+            console.log('[AI] No specific requirements — selecting first candidate by default.');
+            return {
+                selectedIndex: 0,
+                confidence: 0.7,
+                matchedRequirements: [],
+                unmatchedRequirements: [],
+                reason: 'No specific requirements listed in spec — first available product selected.'
+            };
+        }
+
+        const system = `You are an expert electrical estimator verifying that products from a vendor catalog meet construction specification requirements. You are precise, conservative, and only confirm a match when the product clearly satisfies a requirement based on its title or description.`;
+
+        const candidateList = candidates
+            .map((c, i) => `[${i}] Title: "${c.title}"${c.description ? `\n    Description: "${c.description}"` : ''}`)
+            .join('\n');
+
+        const user = `I need to find the best product for this specification block.
+
+SPEC BLOCK: "${blockTitle}"
+
+KEY REQUIREMENTS FROM SPEC:
+${keyRequirements.length > 0 ? keyRequirements.map((r, i) => `${i + 1}. ${r}`).join('\n') : '(none specified)'}
+
+APPROVED MANUFACTURERS (from spec):
+${approvedManufacturers.length > 0 ? approvedManufacturers.join(', ') : '(any brand acceptable)'}
+
+VENDOR SEARCH RESULTS:
+${candidateList}
+
+Instructions:
+- Score each candidate against the key requirements
+- A requirement is "matched" only if the product title or description clearly satisfies it
+- Prefer products from approved manufacturers if listed (but don't auto-reject if no approved list)
+- If multiple candidates are similar quality, prefer the one from an approved manufacturer
+- confidence is a 0.0–1.0 score: 1.0 = all requirements satisfied, 0.0 = nothing matches
+- If the best confidence is below 0.5, selectedIndex should still be the best available but flag it
+
+Respond ONLY as valid JSON:
+{
+  "selectedIndex": 0,
+  "confidence": 0.85,
+  "matchedRequirements": ["requirement that was satisfied"],
+  "unmatchedRequirements": ["requirement not found in product info"],
+  "reason": "brief explanation of why this product was selected"
+}`;
+
+        try {
+            const raw = await this._call(system, user);
+            const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const result = JSON.parse(clean);
+
+            // Clamp index to valid range
+            result.selectedIndex = Math.max(0, Math.min(result.selectedIndex, candidates.length - 1));
+
+            console.log(`[AI] Best product: [${result.selectedIndex}] "${candidates[result.selectedIndex]?.title}"`);
+            console.log(`[AI] Confidence: ${(result.confidence * 100).toFixed(0)}%`);
+            console.log(`[AI] Matched: ${result.matchedRequirements?.join(', ') || 'none'}`);
+            console.log(`[AI] Unmatched: ${result.unmatchedRequirements?.join(', ') || 'none'}`);
+
+            return result;
+        } catch (err) {
+            console.error('[AI] selectBestProduct failed:', err.message);
+            // Graceful fallback: use first candidate
+            return {
+                selectedIndex: 0,
+                confidence: 0.5,
+                matchedRequirements: [],
+                unmatchedRequirements: keyRequirements,
+                reason: 'AI scoring failed — first result used as fallback.'
+            };
+        }
+    }
+
+    /**
      * Step 3 (Optional): Verify found cut sheet matches spec requirements.
      */
     async verifyCutsheetMatch(foundProductTitle, cutsheetUrl, keyRequirements) {
