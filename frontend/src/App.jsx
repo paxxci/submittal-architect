@@ -1646,6 +1646,24 @@ function App() {
                             const isRule = selectedBlock?.isRule;
                             const candidates = blockCutsheet?.candidates || [];
                             const selectionReason = blockCutsheet?.selectionReason || null;
+
+                            // Pre-compute complaint view (avoids IIFE-in-ternary JSX lint error)
+                            const score = blockCutsheet?.complianceScore;
+                            const compPct = score != null ? Math.round(score * 100) : null;
+                            const matched = blockCutsheet?.matchedRequirements || [];
+                            const unmatched = blockCutsheet?.unmatchedRequirements || [];
+                            const scoreColor = compPct == null ? 'text-text-muted'
+                                : compPct >= 80 ? 'text-accent-secondary'
+                                : compPct >= 60 ? 'text-amber-400'
+                                : 'text-red-400';
+                            const scoreBg = compPct == null ? 'bg-white/5 border-border-subtle'
+                                : compPct >= 80 ? 'bg-accent-secondary/10 border-accent-secondary/20'
+                                : compPct >= 60 ? 'bg-amber-400/10 border-amber-400/20'
+                                : 'bg-red-400/10 border-red-400/20';
+                            const compLabel = compPct == null ? 'Unverified'
+                                : compPct >= 80 ? 'Spec Compliant'
+                                : compPct >= 60 ? 'Needs Review'
+                                : 'Likely Wrong Product';
                             return (
                             <div className="pdf-preview-prism h-full flex flex-col border-l border-border-subtle bg-bg-deeper">
                                 <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
@@ -1694,50 +1712,63 @@ function App() {
                                         </div>
                                     ) : isSourced ? (
                                         <div className="flex flex-col h-full animate-fade-in">
-                                            {/* Price + source badge at top */}
-                                            {(blockCutsheet.price || candidates.length > 1 || selectionReason) && (
-                                                <div className="shrink-0 px-3 py-2 bg-accent-secondary/10 border-b border-accent-secondary/20 flex items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        {blockCutsheet.price && (
-                                                            <span className="text-accent-secondary font-black text-sm">
-                                                                {blockCutsheet.price}
-                                                            </span>
-                                                        )}
-                                                        {candidates.length > 1 && (
-                                                            <span className="text-[10px] text-accent-secondary/70 bg-accent-secondary/10 px-2 py-0.5 rounded-full border border-accent-secondary/20">
-                                                                🏆 Lowest price from {candidates.length} vendors
-                                                            </span>
+                                            {/* Compliance header bar */}
+                                            <div className={`shrink-0 px-3 py-2 border-b flex items-center justify-between gap-3 ${scoreBg}`}>
+                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                    {compPct != null && (
+                                                        <span className={`font-black text-lg leading-none ${scoreColor}`}>{compPct}%</span>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className={`text-[10px] font-bold uppercase tracking-widest ${scoreColor}`}>
+                                                            {compLabel}
+                                                        </div>
+                                                        {blockCutsheet.complianceReason && (
+                                                            <div className="text-[9px] text-text-muted truncate">{blockCutsheet.complianceReason}</div>
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</span>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    {blockCutsheet.price && (
+                                                        <div className="text-accent-secondary font-black text-sm">{blockCutsheet.price}</div>
+                                                    )}
+                                                    <div className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Matched / Unmatched requirements */}
+                                            {(matched.length > 0 || unmatched.length > 0) && (
+                                                <div className="shrink-0 px-3 py-2 border-b border-border-subtle bg-bg-deeper flex gap-4">
+                                                    {matched.length > 0 && (
+                                                        <div className="flex-1">
+                                                            <p className="text-[9px] text-accent-secondary uppercase tracking-widest font-bold mb-1">✓ Matched</p>
+                                                            {matched.map((r, i) => (
+                                                                <div key={i} className="text-[10px] text-accent-secondary/80 flex items-start gap-1 leading-tight mb-0.5">
+                                                                    <span className="shrink-0">✓</span><span>{r}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {unmatched.length > 0 && (
+                                                        <div className="flex-1">
+                                                            <p className="text-[9px] text-amber-400 uppercase tracking-widest font-bold mb-1">⚠ Not Confirmed</p>
+                                                            {unmatched.map((r, i) => (
+                                                                <div key={i} className="text-[10px] text-amber-400/80 flex items-start gap-1 leading-tight mb-0.5">
+                                                                    <span className="shrink-0">?</span><span>{r}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
+
                                             {/* PDF iframe */}
                                             <div className="flex-1 p-2 bg-black/20 min-h-0">
-                                                <iframe 
-                                                    src={blockCutsheet.cutsheetUrl} 
+                                                <iframe
+                                                    src={blockCutsheet.cutsheetUrl}
                                                     className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
                                                     title="Vendor Cut Sheet"
                                                 />
                                             </div>
-                                            {/* Candidates list */}
-                                            {candidates.length > 1 && (
-                                                <div className="shrink-0 p-2 border-t border-border-subtle bg-bg-deeper">
-                                                    <p className="text-[9px] text-text-muted uppercase tracking-widest mb-1.5 font-bold">All Candidates</p>
-                                                    <div className="flex flex-col gap-1">
-                                                        {candidates.map((c, i) => (
-                                                            <div key={i} className={`flex justify-between items-center text-[10px] px-2 py-1 rounded ${
-                                                                c.cutsheetUrl === blockCutsheet.cutsheetUrl 
-                                                                    ? 'bg-accent-secondary/15 text-accent-secondary' 
-                                                                    : 'text-text-muted'
-                                                            }`}>
-                                                                <span>{c.searchedBrand || c.vendorShort}</span>
-                                                                <span className="font-mono">{c.price || '—'}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                     ) : selectedBlock ? (
                                         <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">
