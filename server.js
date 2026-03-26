@@ -252,17 +252,21 @@ app.get('/api/source', async (req, res) => {
             }
         }
 
-        // ── STEP 4: Manufacturer direct fallback ──
+        // ── STEP 4: Manufacturer direct fallback — try each listed brand ──
         if (!selectedResult && manufacturers.length > 0) {
             console.log('\n[Sourcing] Tier 3: Manufacturer direct...');
             for (const brand of manufacturers) {
-                const b = brand.toLowerCase();
-                let mfgResult = null;
-                if (b.includes('hubbell')) mfgResult = await engine.sourceFromHubbell(searchQuery);
-                else if (b.includes('leviton')) mfgResult = await engine.sourceFromLeviton(searchQuery);
+                const mfgResult = await engine.sourceFromManufacturerDirect(brand, searchQuery);
                 if (mfgResult?.cutsheetUrl) {
                     selectedResult = mfgResult;
-                    if (!complianceScore) complianceScore = { confidence: 0.65, reason: `Sourced directly from ${brand}`, matchedRequirements: [], unmatchedRequirements: [] };
+                    if (!complianceScore) {
+                        complianceScore = {
+                            confidence: 0.65,
+                            reason: `Sourced directly from ${brand} — no distributor stock found.`,
+                            matchedRequirements: [],
+                            unmatchedRequirements: keyRequirements
+                        };
+                    }
                     break;
                 }
             }

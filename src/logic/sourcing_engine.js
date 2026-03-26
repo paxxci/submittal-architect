@@ -298,69 +298,140 @@ class SourcingEngine {
     // TIER 3: Manufacturer direct (Hubbell, Leviton)
     // ─────────────────────────────────────────────────────────────
 
-    async sourceFromHubbell(query) {
+    // ─────────────────────────────────────────────────────────────
+    // TIER 3: Dynamic Manufacturer Direct
+    // Works for any brand listed in the spec — no hardcoding needed
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Lookup table: known manufacturer name fragments → their search URL template.
+     * {QUERY} is replaced with the encoded product search term.
+     * Add more brands here as needed.
+     */
+    static MANUFACTURER_SEARCH_URLS = {
+        'hubbell':       'https://www.hubbell.com/hubbell/en/search/?text={QUERY}',
+        'leviton':       'https://www.leviton.com/en/search-results?q={QUERY}',
+        'pass & seymour':'https://www.legrand.us/search#q={QUERY}&t=All',
+        'pass and seymour':'https://www.legrand.us/search#q={QUERY}&t=All',
+        'legrand':       'https://www.legrand.us/search#q={QUERY}&t=All',
+        'lutron':        'https://www.lutron.com/en-US/Search/Pages/Results.aspx?k={QUERY}',
+        'eaton':         'https://www.eaton.com/us/en-us/search.html?q={QUERY}',
+        'cooper':        'https://www.eaton.com/us/en-us/search.html?q={QUERY}',
+        'siemens':       'https://mall.industry.siemens.com/mall/en/us/catalog/search.aspx?searchTerm={QUERY}',
+        'square d':      'https://www.se.com/ww/en/search/?q={QUERY}',
+        'schneider':     'https://www.se.com/ww/en/search/?q={QUERY}',
+        'abb':           'https://search.abb.com/library/?q={QUERY}',
+        'panduit':       'https://www.panduit.com/en/search.html?q={QUERY}',
+        'belden':        'https://www.belden.com/en-us/search?searchPhrase={QUERY}',
+        'wiremold':      'https://www.legrand.us/search#q={QUERY}&t=All',
+        'carlon':        'https://www.carlon.com/search?q={QUERY}',
+        'southwire':     'https://www.southwire.com/search?q={QUERY}',
+        'ideal':         'https://www.idealindustries.com/search?q={QUERY}',
+        'klein':         'https://www.kleintools.com/search?query={QUERY}',
+        'burndy':        'https://www.burndy.com/search?q={QUERY}',
+    };
+
+    /**
+     * Dynamically source from any manufacturer's website.
+     * 1. Checks the lookup table for a known search URL pattern
+     * 2. Falls back to DuckDuckGo search: "{brand} {product} cut sheet filetype:pdf"
+     *
+     * @param {string} manufacturerName - e.g. "Pass & Seymour", "Hubbell", "Lutron"
+     * @param {string} productQuery     - e.g. "wall switch single pole 15A"
+     */
+    async sourceFromManufacturerDirect(manufacturerName, productQuery) {
         if (!this.browser) await this.init();
+
+        const nameLower = manufacturerName.toLowerCase().trim();
+        console.log(`[Mfg Direct] Searching "${manufacturerName}" for: "${productQuery}"`);
+
+        // ── Check lookup table ──
+        let searchUrl = null;
+        for (const [key, urlTemplate] of Object.entries(SourcingEngine.MANUFACTURER_SEARCH_URLS)) {
+            if (nameLower.includes(key) || key.includes(nameLower)) {
+                searchUrl = urlTemplate.replace('{QUERY}', encodeURIComponent(productQuery));
+                console.log(`[Mfg Direct] Known manufacturer — using: ${searchUrl}`);
+                break;
+            }
+        }
+
+        // ── Generic DuckDuckGo fallback ──
+        if (!searchUrl) {
+            const ddgQuery = `${manufacturerName} ${productQuery} cut sheet filetype:pdf`;
+            searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(ddgQuery)}&ia=web`;
+            console.log(`[Mfg Direct] Unknown manufacturer — using DuckDuckGo: ${searchUrl}`);
+        }
+
         const page = await this.context.newPage();
         try {
-            console.log(`[Hubbell] Searching for: "${query}"`);
-            await page.goto(`https://www.hubbell.com/hubbell/en/search/?text=${encodeURIComponent(query)}`, { waitUntil: 'load', timeout: 60000 });
+            await page.goto(searchUrl, { waitUntil: 'load', timeout: 45000 });
+            await page.waitForTimeout(2000);
 
-            const cookieBtn = page.locator('#onetrust-accept-btn-handler');
-            await cookieBtn.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-            if (await cookieBtn.isVisible()) await cookieBtn.click({ force: true });
-
-            const viewBtn = page.locator('a[title="View details"]').first();
-            if (await viewBtn.count() === 0) return null;
-            await viewBtn.click();
-            await page.waitForLoadState('networkidle');
-
-            const resourcesTab = page.locator('text="Resources and downloads"');
-            if (await resourcesTab.count() > 0) { await resourcesTab.click(); await page.waitForTimeout(1000); }
-
-            const pdfLink = page.locator('a[title*="Specification Sheet"], a[title*="Spec Sheet"], a:has-text("Specification Sheet"), a:has-text("Cut Sheet")').first();
-            const cutsheetUrl = await pdfLink.count() > 0 ? await pdfLink.getAttribute('href') : null;
-
-            return {
-                vendor: 'Hubbell Direct', vendorShort: 'Hubbell',
-                title: (await page.title()).trim(), sku: 'Hubbell-Direct',
-                price: null, priceNum: null,
-                cutsheetUrl: cutsheetUrl ? (cutsheetUrl.startsWith('http') ? cutsheetUrl : `https://www.hubbell.com${cutsheetUrl}`) : null,
-                pdpUrl: page.url()
-            };
-        } catch (err) { console.error(`[Hubbell] Error: ${err.message}`); return null; }
-        finally { await page.close(); }
-    }
-
-    async sourceFromLeviton(query) {
-        if (!this.browser) await this.init();
-        const page = await this.context.newPage();
-        try {
-            console.log(`[Leviton] Searching for: "${query}"`);
-            await page.goto(`https://www.leviton.com/en/search-results?q=${encodeURIComponent(query)}`, { waitUntil: 'load', timeout: 60000 });
-
-            const closeBtn = page.locator('button[aria-label*="close"], button[aria-label*="Close"], button:has-text("Accept")').first();
-            await closeBtn.waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
-            if (await closeBtn.isVisible()) await closeBtn.click().catch(() => {});
-
-            const firstProduct = page.locator('.product-tile a, .product-card a, .result-item a, h2 a').first();
-            if (await firstProduct.count() === 0) return null;
-            await firstProduct.click();
-            await page.waitForLoadState('networkidle', { timeout: 20000 });
-
-            let cutsheetUrl = null;
-            const pdfLink = page.locator('a[href$=".pdf"], a:has-text("Spec Sheet"), a:has-text("Cut Sheet"), a:has-text("Data Sheet")').first();
-            if (await pdfLink.count() > 0) {
-                const raw = await pdfLink.getAttribute('href');
-                cutsheetUrl = raw?.startsWith('http') ? raw : `https://www.leviton.com${raw}`;
+            // Dismiss any modals/banners
+            for (const btnText of ['Accept', 'Accept All', 'OK', 'Close', 'Agree']) {
+                const btn = page.locator(`button:has-text("${btnText}")`).first();
+                if (await btn.isVisible().catch(() => false)) {
+                    await btn.click().catch(() => {});
+                    await page.waitForTimeout(500);
+                    break;
+                }
             }
 
-            return {
-                vendor: 'Leviton Direct', vendorShort: 'Leviton',
-                title: (await page.title()).trim(), sku: 'Leviton-Direct',
-                price: null, priceNum: null, cutsheetUrl, pdpUrl: page.url()
-            };
-        } catch (err) { console.error(`[Leviton] Error: ${err.message}`); return null; }
-        finally { await page.close(); }
+            // Strategy 1: Find a direct PDF link on the page
+            const pdfLink = page.locator('a[href$=".pdf"]').first();
+            if (await pdfLink.count() > 0) {
+                const raw = await pdfLink.getAttribute('href');
+                const cutsheetUrl = raw.startsWith('http') ? raw : `${new URL(searchUrl).origin}${raw}`;
+                console.log(`[Mfg Direct] Found direct PDF: ${cutsheetUrl}`);
+                return {
+                    vendor: `${manufacturerName} Direct`,
+                    vendorShort: manufacturerName,
+                    title: (await page.title()).trim(),
+                    sku: null, price: null, priceNum: null,
+                    cutsheetUrl,
+                    pdpUrl: page.url()
+                };
+            }
+
+            // Strategy 2: Click the first product result, then look for PDF
+            const firstProduct = page.locator(
+                'a[href*="/product/"], a[href*="/catalog/"], a[href*="/en/"], h2 a, h3 a, .product-title a, li.result a'
+            ).first();
+
+            if (await firstProduct.count() > 0) {
+                await firstProduct.click();
+                await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
+                await page.waitForTimeout(1000);
+
+                // Look for PDF cut sheet link on the PDP
+                const pdpPdf = page.locator(
+                    'a[href$=".pdf"], a:has-text("Spec Sheet"), a:has-text("Data Sheet"), a:has-text("Cut Sheet"), a:has-text("Product Document")'
+                ).first();
+
+                if (await pdpPdf.count() > 0) {
+                    const raw = await pdpPdf.getAttribute('href');
+                    const cutsheetUrl = raw.startsWith('http') ? raw : `${new URL(page.url()).origin}${raw}`;
+                    console.log(`[Mfg Direct] Found PDF on PDP: ${cutsheetUrl}`);
+                    return {
+                        vendor: `${manufacturerName} Direct`,
+                        vendorShort: manufacturerName,
+                        title: (await page.title()).trim(),
+                        sku: null, price: null, priceNum: null,
+                        cutsheetUrl,
+                        pdpUrl: page.url()
+                    };
+                }
+            }
+
+            console.log(`[Mfg Direct] No cut sheet found for "${manufacturerName}"`);
+            return null;
+
+        } catch (err) {
+            console.error(`[Mfg Direct] Error for "${manufacturerName}": ${err.message}`);
+            return null;
+        } finally {
+            await page.close();
+        }
     }
 
     async shutdown() {
