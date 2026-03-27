@@ -4,7 +4,7 @@ import {
     Settings, Bell, Search, ChevronRight, 
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
-    FileText, ExternalLink, Briefcase, Building2, Trash2
+    FileText, ExternalLink, Briefcase, Building2, Trash2, Maximize, X
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { useEffect } from 'react'
@@ -240,6 +240,7 @@ function App() {
     const [selectedBlock, setSelectedBlock] = useState(null) // { blockKey, blockTitle, blockLines, blockIdx }
     const [pdfAlignmentOffset, setPdfAlignmentOffset] = useState(0) // Tracks vertical offset for PDF viewer side-by-side alignment
     const [hoveredRequirement, setHoveredRequirement] = useState(null) // Tracks hovered matched requirement for UI X-Ray
+    const [expandedPdfUrl, setExpandedPdfUrl] = useState(null) // Allows fullscreen PDF viewing
     const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false)
     const [newProjectStep, setNewProjectStep] = useState(1)
     const [customDivisionInput, setCustomDivisionInput] = useState('')
@@ -1708,12 +1709,23 @@ function App() {
                                             : selectedBlock ? selectedBlock.blockTitle.slice(0, 40)
                                             : "SELECT A BLOCK TO VIEW CUT SHEET"}
                                     </span>
-                                    <span className="text-[10px] uppercase font-bold text-text-muted bg-white/5 py-1 px-3 rounded-full">
-                                        {isSourcing ? "PROCESSING"
-                                            : isSourced ? blockCutsheet.vendor
-                                            : selectedBlock ? "AWAITING SOURCE"
-                                            : `PAGE ${selectedSpec.pageNumber || 1}`}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] uppercase font-bold text-text-muted bg-white/5 py-1 px-3 rounded-full">
+                                            {isSourcing ? "PROCESSING"
+                                                : isSourced ? blockCutsheet.vendor
+                                                : selectedBlock ? "AWAITING SOURCE"
+                                                : `PAGE ${selectedSpec.pageNumber || 1}`}
+                                        </span>
+                                        {isSourced && (
+                                            <button 
+                                                onClick={() => setExpandedPdfUrl(blockCutsheet.cutsheetUrl)}
+                                                className="h-6 w-6 rounded bg-black/20 hover:bg-accent-primary flex items-center justify-center text-text-muted hover:text-black transition-colors shrink-0"
+                                                title="Expand Full Screen"
+                                            >
+                                                <Maximize size={12} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 
                                 <div className="pdf-canvas flex-1 relative flex items-center justify-center overflow-hidden">
@@ -1761,11 +1773,13 @@ function App() {
                                                         )}
                                                     </div>
                                                 </div>
-                                                <div className="text-right shrink-0">
-                                                    {blockCutsheet.price && (
-                                                        <div className="text-accent-secondary font-black text-sm">{blockCutsheet.price}</div>
-                                                    )}
-                                                    <div className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</div>
+                                                <div className="text-right shrink-0 flex items-center gap-4">
+                                                    <div>
+                                                        {blockCutsheet.price && (
+                                                            <div className="text-accent-secondary font-black text-[13px]">{blockCutsheet.price}</div>
+                                                        )}
+                                                        <div className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</div>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -2062,6 +2076,34 @@ function App() {
                             ></div>
                         </div>
                         <p className="text-[10px] text-text-muted font-mono uppercase tracking-[0.2em]">CSI Section Extraction Engine v2.0</p>
+                    </div>
+                </div>
+            )}
+
+            {/* FULLSCREEN PDF MODAL OVERLAY */}
+            {expandedPdfUrl && (
+                <div className="fixed inset-0 z-[2000] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
+                    <div className="w-full max-w-7xl h-full flex flex-col gap-4">
+                        <div className="flex justify-between items-center shrink-0">
+                            <h2 className="text-xl font-black tracking-widest text-white flex items-center gap-3">
+                                <FileText size={20} className="text-accent-primary" />
+                                FULL SCREEN DOCUMENT VIEWER
+                            </h2>
+                            <button 
+                                onClick={() => setExpandedPdfUrl(null)}
+                                className="h-10 w-10 rounded-full bg-white/10 hover:bg-accent-primary flex items-center justify-center text-white transition-colors border border-white/20"
+                                title="Close Full Screen"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex-1 bg-white rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/20 relative">
+                            <iframe
+                                src={expandedPdfUrl}
+                                className="w-full h-full border-none absolute inset-0"
+                                title="Expanded Vendor Cut Sheet"
+                            />
+                        </div>
                     </div>
                 </div>
             )}
