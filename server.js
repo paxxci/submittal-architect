@@ -16,7 +16,14 @@ app.use(express.json());
 // Serve the Vite-built frontend
 const FRONTEND_DIST = path.join(__dirname, 'frontend', 'dist');
 if (fs.existsSync(FRONTEND_DIST)) {
-    app.use(express.static(FRONTEND_DIST));
+    // Ensure the browser *never* caches the frontend files during development
+    app.use(express.static(FRONTEND_DIST, {
+        setHeaders: (res, path) => {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }));
 } else {
     console.warn('[Server] frontend/dist not found — run: cd frontend && npm run build');
 }
@@ -171,6 +178,7 @@ app.get('/api/shred/status', (req, res) => {
 
 const SourcingEngine = require('./src/logic/sourcing_engine');
 const AIEngine = require('./src/logic/ai_engine');
+const HighlighterEngine = require('./src/logic/highlighter_engine');
 
 app.get('/api/source', async (req, res) => {
     const { query, sectionTitle, specText, prefs, aiBlockData } = req.query;
@@ -186,6 +194,8 @@ app.get('/api/source', async (req, res) => {
         let searchQuery = query;
         let keyRequirements = [];
         let manufacturers = [];
+        let aiResult = {};
+        const ai = process.env.OPENROUTER_API_KEY ? new AIEngine(process.env.OPENROUTER_API_KEY) : null;
 
         if (aiBlockData) {
             // Pre-computed at parse time by AIShredder — no need to call AI again
@@ -213,19 +223,22 @@ app.get('/api/source', async (req, res) => {
             return res.json({ success: !!pdp?.cutsheetUrl, result: pdp });
         } else {
             // No pre-computed data — run AI extraction now
-            const ai = new AIEngine(process.env.OPENROUTER_API_KEY);
-            console.log('[AI] Extracting product info from spec block...');
-            const aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
-            searchQuery = aiResult.searchQuery;
-            keyRequirements = aiResult.keyRequirements || [];
-            manufacturers = aiResult.manufacturers || [];
+            if (ai) {
+                console.log('[AI] Extracting product info from spec block...');
+                aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
+                searchQuery = aiResult.searchQuery;
+                keyRequirements = aiResult.keyRequirements || [];
+                manufacturers = aiResult.manufacturers || [];
 
-            if (aiResult.isProductSection === false) {
-                return res.json({
-                    success: false,
-                    reason: 'no_product',
-                    message: 'This block defines requirements or installation methods — no cut sheet needed.'
-                });
+                if (aiResult.isProductSection === false) {
+                    return res.json({
+                        success: false,
+                        reason: 'no_product',
+                        message: 'This block defines requirements or installation methods — no cut sheet needed.'
+                    });
+                }
+            } else {
+                console.warn('[AI] Cannot extract info: OPENROUTER_API_KEY not set.');
             }
         }
 
@@ -325,6 +338,44 @@ app.get('/api/source', async (req, res) => {
                 selectedResult.unmatchedRequirements = complianceScore.unmatchedRequirements || [];
                 selectedResult.complianceReason = complianceScore.reason;
                 selectedResult.needsReview = complianceScore.confidence < 0.8; // orange flag if 60-79%
+            }
+
+            // ── STEP 6: Highlighting Coordinates ──
+            if (selectedResult.cutsheetUrl && selectedResult.matchedRequirements && selectedResult.matchedRequirements.length > 0) {
+                try {
+                    const hEngine = new HighlighterEngine();
+                    const tmpFilename = `tmp_source_${Date.now()}.pdf`;
+                    console.log('[API] Downloading cutsheet to extract highlight coordinates...');
+                    const pdfPath = await hEngine.download(selectedResult.cutsheetUrl, tmpFilename);
+                    
+                    const highlights = {};
+                    for (const req of selectedResult.matchedRequirements) {
+                        try {
+                            // Find coordinates for the exact string, or the most prominent word in the string
+                            // Using the raw req text first
+                            const coords = await hEngine.findCoordinates(pdfPath, req);
+                            if (coords && coords.length > 0) {
+                                highlights[req] = coords;
+                            } else {
+                                // Fallback: try finding just the first significant word if full phrase fails
+                                const firstWord = req.split(' ').find(w => w.length > 3);
+                                if (firstWord) {
+                                    const fallbackCoords = await hEngine.findCoordinates(pdfPath, firstWord);
+                                    if (fallbackCoords && fallbackCoords.length > 0) {
+                                        highlights[req] = fallbackCoords;
+                                    }
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    selectedResult.highlights = highlights;
+                    console.log(`[API] Extracted highlights for ${Object.keys(highlights).length} parameters.`);
+                    
+                    // Cleanup temp pdf
+                    if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+                } catch (err) {
+                    console.error('[API] Error extracting highlights:', err);
+                }
             }
 
             console.log(`\n[Sourcing] ✅ Final result: "${selectedResult.title}" | Compliance: ${selectedResult.complianceScore ? `${(selectedResult.complianceScore * 100).toFixed(0)}%` : 'N/A'}`);

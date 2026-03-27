@@ -78,6 +78,7 @@ const MOCK_PORTFOLIO = [
 
 // Helper Component to Format Raw Specification Text
 const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey, aiBlocks }) => {
+    
     if (!text) return null;
     
     const lines = text.split('\n');
@@ -113,20 +114,20 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                 const isGreen = isCompleted || isNA;
                 
                 return (
-                    <div 
-                        key={blockId} 
-                        className={`spec-block prism-card transition-all p-5 relative border-l-4 ${
-                            isCompleted ? 'border-l-accent-secondary border-accent-secondary/30 bg-accent-secondary/5 shadow-[0_0_20px_rgba(0,255,163,0.05)]' : 
-                            isNA ? 'border-l-text-muted border-border-subtle bg-white/2 opacity-80' : 
-                            isSelected ? 'border-l-accent-primary bg-accent-primary/8 shadow-[0_0_20px_rgba(255,115,0,0.15)]' :
-                            'border-l-transparent hover:border-l-accent-primary/50'
-                        } ${
-                            isSelected && !isGreen ? 'ring-1 ring-accent-primary/40' : 
-                            !isGreen ? 'hover:border-accent-primary/20 hover:translate-x-1' : ''
-                        }`}
-                        onClick={() => onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx })}
-                    >
-                        <div className="mb-4">
+                <div 
+                    key={blockIdx}
+                    id={`prism-block-${blockKey.replace(/[^a-zA-Z0-9]/g, '')}`}
+                    className={`prism-block prism-card mb-4 relative overflow-hidden transition-all duration-300 cursor-pointer border-l-4 ${
+                        isCompleted ? 'border-l-accent-secondary border-accent-secondary/30 bg-accent-secondary/5' : 
+                        isNA ? 'border-l-text-muted border-border-subtle bg-white/2 opacity-80' : 
+                        isSelected ? 'border-l-accent-primary bg-accent-primary/8 ring-2 ring-accent-primary shadow-[0_0_20px_rgba(255,115,0,0.15)]' :
+                        'border-l-transparent hover:border-l-accent-primary/50 hover:border-accent-primary/40'
+                    } ${
+                        !isGreen && !isSelected ? 'hover:translate-x-1' : ''
+                    } group`}
+                    onClick={(e) => onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: e.currentTarget.offsetTop })}
+                >
+                    <div className="mb-4">
                             {/* Group Header & Actions Together */}
                             <div className="flex justify-between items-center mb-4 pb-4 border-b border-white/10 gap-6">
                                 <div className="flex-1">
@@ -152,7 +153,8 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                                 e.stopPropagation(); 
                                                 if (!isCompleted) {
                                                     // Select this block so right column knows which cut sheet to show
-                                                    onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx });
+                                                    const blockEl = document.getElementById(`prism-block-${blockKey.replace(/[^a-zA-Z0-9]/g, '')}`);
+                                                    onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: blockEl ? blockEl.offsetTop : 0 });
                                                     window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
                                                         detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n'), aiBlockData } 
                                                     })); 
@@ -236,6 +238,8 @@ function App() {
     const [sourcingProgressPct, setSourcingProgressPct] = useState(0)
     // Tracks which Part 2 block the user has clicked — drives the right column display
     const [selectedBlock, setSelectedBlock] = useState(null) // { blockKey, blockTitle, blockLines, blockIdx }
+    const [pdfAlignmentOffset, setPdfAlignmentOffset] = useState(0) // Tracks vertical offset for PDF viewer side-by-side alignment
+    const [hoveredRequirement, setHoveredRequirement] = useState(null) // Tracks hovered matched requirement for UI X-Ray
     const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false)
     const [newProjectStep, setNewProjectStep] = useState(1)
     const [customDivisionInput, setCustomDivisionInput] = useState('')
@@ -1570,7 +1574,7 @@ function App() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden">
+                    <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
                         {(sectionResponsibility[selectedSpec.id] || 'SELF') === 'NA' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center h-full opacity-50 grayscale animate-fade-in">
                                 <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
@@ -1603,10 +1607,10 @@ function App() {
                                 </div>
                             </div>
                         ) : (
-                        <div className="col-span-2 grid grid-cols-2 gap-8 h-full overflow-hidden">
+                        <div className="col-span-2 grid grid-cols-2 gap-8 h-full">
                             <div className="flex flex-col h-full">
                                 {/* Dynamic Content based on selected Part */}
-                                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                                <div className="flex-1 pb-[80vh]">
                                 {selectedPart === 'part1' && (
                                     <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
                                         <FormattedSpecText
@@ -1644,7 +1648,11 @@ function App() {
                                             completedBlocks={completedBlocks}
                                             naBlocks={naBlocks}
                                             onToggleBlock={toggleBlockCompletion}
-                                            onBlockSelect={(block) => setSelectedBlock(block)}
+                                            onBlockSelect={(block) => {
+                                                setSelectedBlock(block);
+                                                // Nudging by 82px connects the precise horizontal axis perfectly to the PDF toolbar
+                                                setPdfAlignmentOffset((block.offsetTop || 0) - 82);
+                                            }}
                                             selectedBlockKey={selectedBlock?.blockKey}
                                             aiBlocks={selectedSpec.aiBlockMap || null}
                                         />
@@ -1662,11 +1670,9 @@ function App() {
                         {/* Dynamic PDF Preview / Sourcing Tracker Side */}
                         {/* Shows: (1) spinner when sourcing, (2) block cut sheet when selected+sourced, (3) placeholder otherwise */}
                         {(() => {
-                            // Check block-level storage first (new format)
-                            // Fall back to section-level sourcedProduct (old format) for backward compat
+                            // Only use block-level storage. Remove section-level fallback to stop ghosting.
                             const blockCutsheet = selectedBlock?.blockKey 
-                                ? (selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
-                                   || selectedSpec.metadata?.sourcedProduct)  // ← backward compat
+                                ? selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
                                 : null;
                             const isSourced = !!blockCutsheet?.cutsheetUrl;
                             const isSourcing = activeSourcingBlockId === selectedSpec.id;
@@ -1692,8 +1698,9 @@ function App() {
                                 : compPct >= 60 ? 'Needs Review'
                                 : 'Likely Wrong Product';
                             return (
-                            <div className="pdf-preview-prism h-full flex flex-col border-l border-border-subtle bg-bg-deeper">
-                                <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
+                                <div className="flex flex-col transition-all duration-500 ease-out" style={{ marginTop: pdfAlignmentOffset }}>
+                                    <div className="pdf-preview-prism flex flex-col border-l border-border-subtle bg-bg-deeper" style={{ height: '700px' }}>
+                                        <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
                                     <span className="text-xs font-bold text-text-muted flex items-center">
                                         <FileText size={14} className="mr-2 text-accent-primary" /> 
                                         {isSourcing ? "SOURCING ENGINE ACTIVE"
@@ -1769,7 +1776,12 @@ function App() {
                                                         <div className="flex-1">
                                                             <p className="text-[9px] text-accent-secondary uppercase tracking-widest font-bold mb-1">✓ Matched</p>
                                                             {matched.map((r, i) => (
-                                                                <div key={i} className="text-[10px] text-accent-secondary/80 flex items-start gap-1 leading-tight mb-0.5">
+                                                                <div 
+                                                                    key={i} 
+                                                                    className="text-[10px] text-accent-secondary flex items-start gap-1 leading-tight mb-0.5 cursor-crosshair hover:bg-accent-secondary/20 p-0.5 rounded transition-colors"
+                                                                    onMouseEnter={() => setHoveredRequirement(r)}
+                                                                    onMouseLeave={() => setHoveredRequirement(null)}
+                                                                >
                                                                     <span className="shrink-0">✓</span><span>{r}</span>
                                                                 </div>
                                                             ))}
@@ -1788,13 +1800,46 @@ function App() {
                                                 </div>
                                             )}
 
-                                            {/* PDF iframe */}
-                                            <div className="flex-1 p-2 bg-black/20 min-h-0">
+                                            {/* PDF iframe with dynamic Highlighting Overlay */}
+                                            <div className="flex-1 p-2 bg-black/20 min-h-0 relative overflow-hidden">
                                                 <iframe
                                                     src={blockCutsheet.cutsheetUrl}
-                                                    className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white"
+                                                    className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white pointer-events-auto"
                                                     title="Vendor Cut Sheet"
                                                 />
+                                                
+                                                {/* X-Ray Hover Box layer */}
+                                                {hoveredRequirement && blockCutsheet.highlights?.[hoveredRequirement] && (
+                                                    <div className="absolute inset-2 pointer-events-none rounded-lg overflow-hidden z-10">
+                                                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] transition-all duration-300"></div>
+                                                        {blockCutsheet.highlights[hoveredRequirement].map((coord, idx) => {
+                                                            // Calculate rough percentage coordinates relative to the 8.5x11 PDF canvas
+                                                            // Using PDF standard 612x792 pt sizing (assumes scale to fit)
+                                                            const pageHeight = coord.pageHeight || 792;
+                                                            const pageWidth = 612; // Standard width
+                                                            const topPct = (coord.pageHeight ? (coord.pageHeight - coord.y) / coord.pageHeight : (792 - coord.y) / 792) * 100;
+                                                            const leftPct = (coord.x / pageWidth) * 100;
+                                                            
+                                                            return (
+                                                                <div 
+                                                                    key={idx}
+                                                                    className="highlight-box absolute border-2 border-accent-secondary bg-accent-secondary/20 animate-pulse shadow-[0_0_30px_rgba(0,255,163,0.5)] z-20"
+                                                                    style={{
+                                                                        top: `max(5%, calc(${topPct}% - 40%))`, // Approximate visual centering for the demo
+                                                                        left: `${Math.max(5, leftPct - 5)}%`,
+                                                                        width: `${Math.min(90, (coord.width / pageWidth) * 100 + 10)}%`,
+                                                                        height: '40px',
+                                                                        borderRadius: '4px'
+                                                                    }}
+                                                                >
+                                                                    <div className="absolute -top-6 left-0 bg-bg-deep border border-accent-secondary text-accent-secondary text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-widest whitespace-nowrap">
+                                                                        Target Located: Page {coord.pageIndex + 1}
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ) : selectedBlock ? (
@@ -1831,8 +1876,9 @@ function App() {
                                     )}
                                 </div>
                             </div>
-                            );
-                        })()}
+                        </div>
+                        );
+                    })()}
                         </div>
               )}
                     </div>
