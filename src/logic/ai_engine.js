@@ -38,70 +38,58 @@ class AIEngine {
         return response.data.choices[0].message.content.trim();
     }
 
-    /**
-     * Step 1 of Sourcing Pipeline:
-     * Read a spec section and extract what products need to be sourced,
-     * which manufacturers are listed, and what the key requirements are.
-     * 
-     * Returns: { searchQuery, productType, manufacturers, keyRequirements, isProductSection }
-     */
-    async extractSearchQuery(sectionTitle, specText) {
-        const system = `You are an expert electrical estimator for a commercial electrical contracting company. You read construction specification sections and identify exactly what physical products need to be purchased and which manufacturers are acceptable per the spec. You understand CSI MasterFormat, electrical codes, and supply house catalogs.`;
+    async extractSearchQueries(sectionTitle, specText) {
+        const NECHandbook = require('./nec_handbook');
+        const system = `You are a Master Electrical Estimator. You understand the National Electrical Code (NEC) and the physical differences between 'Raceway' (the pipe) and 'Fittings' (the connectors).
+        
+Industry Standards Reference:
+- NEC Category 'Fittings': ${NECHandbook.standard_mappings.Fittings.join(', ')}
+- NEC Category 'Raceway': ${NECHandbook.standard_mappings.Raceway.join(', ')}
+- Common Manufacturers: ${Object.keys(NECHandbook.common_manufacturers).join(', ')}
 
-        const user = `Read this electrical specification section and extract the product sourcing information.
+Your goal is to extract a LIST of ALL distinct products to be purchased from a specification block. Often, a single block like 'FITTINGS' requires multiple items (e.g. fittings for Rigid, EMT, and IMC).`;
 
-SPEC SECTION: "${sectionTitle}"
+        const user = `Read this electrical specification block and extract a list of all distinct product sourcing tasks.
+        
+BLOCK TITLE: "${sectionTitle}"
 
 SPEC TEXT:
 """
-${specText.slice(0, 2500)}
+${specText.slice(0, 4000)}
 """
 
-Rules:
-- The searchQuery must be a short phrase an electrician would type into an electrical supply website
-- ONLY use words that appear in the spec text or are standard electrical product names
-- DO NOT add materials like "aluminum" or "steel" unless the spec explicitly mentions them
-- For wiring devices (switches, receptacles, outlets), search by product type only (e.g. "wall switch", "duplex receptacle")
-- Keep the searchQuery to 4-6 words maximum
-- Extract ONLY manufacturers explicitly listed in the spec (from lines starting with "Manufacturers:", "Acceptable Manufacturers:", a numbered list after "manufacturers include the following", etc.)
-- If no manufacturers are listed, return an empty array for manufacturers
-- isProductSection is false if this block contains ONLY sizing rules, general requirements, installation methods, or code references — with NO specific physical product to purchase
+CRITICAL RULES:
+1. IDENTIFY MULTIPLE PRODUCTS: If the block mentions fittings for different types of conduit (Rigid, EMT, Liquidtight), return a separate entry for each conduit fitting type.
+2. STRICT PART NUMBERS: If you see specific numbers from manufacturers like Raco, Hubbell, or Steel City, YOU MUST include them in the 'searchQuery'. This is a MANDATORY requirement for accuracy.
+3. CATEGORY ENFORCEMENT: If the block title says 'FITTINGS', do NOT return search queries for 'Conduit', 'Pipe', or 'Raceway'.
+4. CONDUIT TYPE SPECIFICITY: Every productType MUST include the conduit type (e.g. 'Rigid Connector' NOT just 'Connector').
+5. MINIMIZE OVERLAP: Do not return 10 items for the same conduit type. Group by major category (e.g. 'EMT Fittings', 'Rigid Fittings').
 
-Respond ONLY as valid JSON with these exact fields:
+Respond ONLY as valid JSON:
 {
-  "searchQuery": "short clean search term (e.g. 'EMT conduit' or 'wall switch' or 'duplex receptacle')",
-  "productType": "full product name (e.g. 'Electrical Metallic Tubing (EMT)')",
-  "manufacturers": ["Brand A", "Brand B"],
-  "keyRequirements": ["only specific technical requirements explicitly stated in the spec, e.g. NEMA WD 1, UL listed, 20 amp"],
-  "isProductSection": true
+  "products": [
+    {
+      "searchQuery": "manufacturer + part number + product (e.g. 'Raco 1222 fitting')",
+      "productType": "Specific product name (e.g. 'Rigid Conduit Connector')",
+      "manufacturers": ["Raco", "Steel City"],
+      "keyRequirements": ["technical requirements for THIS specific item"],
+      "isProduct": true
+    }
+  ]
 }`;
 
         try {
             const raw = await this._call(system, user);
             const clean = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            let parsed = JSON.parse(clean);
+            const parsed = JSON.parse(clean);
             
-            // Gemini sometimes returns an array — take first item
-            if (Array.isArray(parsed)) {
-                console.log(`[AI] Got ${parsed.length} products from spec — using first: "${parsed[0]?.productType}"`);
-                parsed = parsed[0];
-            }
+            const results = Array.isArray(parsed.products) ? parsed.products : [parsed];
             
-            // Normalize manufacturers — clean up any empty entries
-            parsed.manufacturers = (parsed.manufacturers || [])
-                .map(m => m.trim())
-                .filter(m => m.length > 0 && m.length < 50); // sanity check
-            
-            console.log(`[AI] Product type: "${parsed.productType}"`);
-            console.log(`[AI] Search query: "${parsed.searchQuery}"`);
-            console.log(`[AI] Manufacturers: ${parsed.manufacturers.length > 0 ? parsed.manufacturers.join(', ') : '(none listed)'}`);
-            console.log(`[AI] Key requirements: ${(parsed.keyRequirements || []).join(', ')}`);
-            console.log(`[AI] Is product section: ${parsed.isProductSection}`);
-            return parsed;
+            console.log(`[AI] Identified ${results.length} distinct products in this block.`);
+            return results;
         } catch (err) {
-            console.error('[AI] extractSearchQuery failed:', err.message);
-            const fallback = sectionTitle.replace(/^\d[\d\s]+[-–]\s*/, '').slice(0, 60);
-            return { searchQuery: fallback, productType: sectionTitle, manufacturers: [], keyRequirements: [], isProductSection: true };
+            console.error('[AI] extractSearchQueries failed:', err.message);
+            return [{ searchQuery: sectionTitle, productType: sectionTitle, manufacturers: [], keyRequirements: [], isProduct: true }];
         }
     }
 
@@ -133,40 +121,47 @@ Respond ONLY as valid JSON with these exact fields:
             };
         }
 
-        const system = `You are an expert electrical estimator verifying that products from a vendor catalog meet construction specification requirements. You are precise, conservative, and only confirm a match when the product clearly satisfies a requirement based on its title or description.`;
+        const NECHandbook = require('./nec_handbook');
+        const system = `You are a Master Electrical Estimator. You are precise and conservative.
+        
+NEC Category Guardrails:
+- A 'Fitting' (Connector, Coupling) is NOT a 'Raceway' (Pipe, Conduit).
+- If the Spec Block is for 'Fittings', you MUST REJECT any product that is just raw conduit/pipe (e.g. Allied Rigid Conduit) with a confidence of 0.0.
+- Exception: If the product is a fitting *for* the specified conduit, it is a valid match.
+
+Role: Verify that products meet specific technical standards (NEMA, UL, NEC). Matched requirements MUST be explicitly found in the vendor text.`;
 
         const candidateList = candidates
             .map((c, i) => `[${i}] Title: "${c.title}"${c.description ? `\n    Description: "${c.description}"` : ''}`)
             .join('\n');
 
-        const user = `I need to find the best product for this specification block.
+        const user = `Find the best product for this specification block.
 
 SPEC BLOCK: "${blockTitle}"
 
-KEY REQUIREMENTS FROM SPEC:
+KEY REQUIREMENTS:
 ${keyRequirements.length > 0 ? keyRequirements.map((r, i) => `${i + 1}. ${r}`).join('\n') : '(none specified)'}
 
-APPROVED MANUFACTURERS (from spec):
+APPROVED MANUFACTURERS:
 ${approvedManufacturers.length > 0 ? approvedManufacturers.join(', ') : '(any brand acceptable)'}
 
 VENDOR SEARCH RESULTS:
 ${candidateList}
 
 Instructions:
-- Score each candidate against the key requirements
-- A requirement is "matched" only if the product title or description clearly satisfies it
-- Prefer products from approved manufacturers if listed (but don't auto-reject if no approved list)
-- If multiple candidates are similar quality, prefer the one from an approved manufacturer
-- confidence is a 0.0–1.0 score: 1.0 = all requirements satisfied, 0.0 = nothing matches
-- If the best confidence is below 0.5, selectedIndex should still be the best available but flag it
+1. HARD CATEGORY CHECK: Is the candidate a 'Fitting' or a 'Pipe'? If the spec is for Fittings and the product is a Pipe, score it 0.0.
+2. CONDUIT TYPE MATCH: If the spec specifies "Rigid" and the candidate is "Flex" or "EMT", score it 0.0. This is a NON-NEGOTIABLE engineering requirement.
+3. SIZE MATCH: If the spec specifies a size (e.g. 1/2 inch) and the candidate is a different size (e.g. 3/4 inch), score it 0.0.
+4. PART NUMBER MATCH: If the Spec Block mentions a part number (e.g. 1222) and the product title contains that number, it is a high-confidence match.
+5. OUTPUT: List the specific technical traits that match (e.g. 'Malleable Iron', 'Steel').
 
 Respond ONLY as valid JSON:
 {
   "selectedIndex": 0,
   "confidence": 0.85,
-  "matchedRequirements": ["requirement that was satisfied"],
-  "unmatchedRequirements": ["requirement not found in product info"],
-  "reason": "brief explanation of why this product was selected"
+  "matchedRequirements": ["technical proof found in text"],
+  "unmatchedRequirements": ["spec reqs missing from vendor text"],
+  "reason": "Clear explanation of why this was selected (or why it was rejected)."
 }`;
 
         try {

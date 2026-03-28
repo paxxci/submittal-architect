@@ -191,205 +191,110 @@ app.get('/api/source', async (req, res) => {
         const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'] };
 
         // ── STEP 1: Get block info — use pre-computed data if available, else call AI ──
-        let searchQuery = query;
-        let keyRequirements = [];
-        let manufacturers = [];
-        let aiResult = {};
+        let productTasks = [];
         const ai = process.env.OPENROUTER_API_KEY ? new AIEngine(process.env.OPENROUTER_API_KEY) : null;
 
         if (aiBlockData) {
-            // Pre-computed at parse time by AIShredder — no need to call AI again
+            // Already parsed at shred-time
             const parsed = JSON.parse(aiBlockData);
-            keyRequirements = parsed.keyRequirements || [];
-            manufacturers = parsed.manufacturers || [];
-            // Build a smart search query: "manufacturer product block-title"
-            const mfgPrefix = manufacturers.length > 0 ? manufacturers[0] + ' ' : '';
-            searchQuery = mfgPrefix + (parsed.summary || query);
-            console.log(`[AI] Using pre-computed block data. Reqs: ${keyRequirements.join(', ') || '(none)'}`);
-
             if (parsed.isProduct === false) {
-                return res.json({
-                    success: false,
-                    reason: 'no_product',
-                    message: 'This block defines requirements or installation methods — no cut sheet needed.'
-                });
+                return res.json({ success: false, reason: 'no_product', message: 'Not a product block.' });
             }
-        } else if (!process.env.OPENROUTER_API_KEY) {
-            console.warn('[AI] No OPENROUTER_API_KEY — using raw query fallback.');
-            const engine = new SourcingEngine();
-            const candidates = await engine.getPlattCandidates(query);
-            const pdp = candidates.length > 0 ? await engine.getPlattPDP(candidates[0].href, query) : null;
-            await engine.shutdown();
-            return res.json({ success: !!pdp?.cutsheetUrl, result: pdp });
+            productTasks = [{
+                searchQuery: (parsed.manufacturers?.[0] ? parsed.manufacturers[0] + ' ' : '') + (parsed.summary || query),
+                productType: parsed.productType || query,
+                manufacturers: parsed.manufacturers || [],
+                keyRequirements: parsed.keyRequirements || []
+            }];
+        } else if (ai) {
+            console.log('[AI] Extracting multiple product tasks from spec block...');
+            productTasks = await ai.extractSearchQueries(sectionTitle || query, specText || query);
         } else {
-            // No pre-computed data — run AI extraction now
-            if (ai) {
-                console.log('[AI] Extracting product info from spec block...');
-                aiResult = await ai.extractSearchQuery(sectionTitle || query, specText || query);
-                searchQuery = aiResult.searchQuery;
-                keyRequirements = aiResult.keyRequirements || [];
-                manufacturers = aiResult.manufacturers || [];
-
-                if (aiResult.isProductSection === false) {
-                    return res.json({
-                        success: false,
-                        reason: 'no_product',
-                        message: 'This block defines requirements or installation methods — no cut sheet needed.'
-                    });
-                }
-            } else {
-                console.warn('[AI] Cannot extract info: OPENROUTER_API_KEY not set.');
-            }
+            // No AI — generic fallback
+            productTasks = [{ searchQuery: query, productType: sectionTitle || query, manufacturers: [], keyRequirements: [] }];
         }
-
-        console.log(`[AI] Search query: "${searchQuery}"`);
-        console.log(`[AI] Requirements: ${keyRequirements.join(', ') || '(none)'}`);
-        console.log(`[AI] Approved brands: ${manufacturers.join(', ') || '(any)'}`);
 
         const engine = new SourcingEngine();
+        const finalResults = [];
 
-        // ── STEP 2: Try Platt ──
-        console.log('\n[Sourcing] Tier 1: Platt...');
-        const plattCandidates = await engine.getPlattCandidates(searchQuery);
+        // ── STEP 2: Process each identified product task ──
+        for (const task of productTasks) {
+            console.log(`\n[Sourcing Task] "${task.productType}" | Query: "${task.searchQuery}"`);
+            let selectedResult = null;
+            let complianceScore = null;
 
-        let selectedResult = null;
-        let complianceScore = null;
-
-        if (plattCandidates.length > 0) {
-            // AI picks the best candidate from search results
-            complianceScore = await ai.selectBestProduct(plattCandidates, sectionTitle, keyRequirements, manufacturers);
-
-            if (complianceScore && complianceScore.confidence >= CONFIDENCE_MIN) {
-                const winner = plattCandidates[complianceScore.selectedIndex];
-                console.log(`[Sourcing] ✓ Platt winner: "${winner.title}" (${(complianceScore.confidence * 100).toFixed(0)}% match)`);
-                const pdp = await engine.getPlattPDP(winner.href, searchQuery);
-                if (pdp?.cutsheetUrl) {
-                    selectedResult = pdp;
-                } else {
-                    console.log('[Sourcing] Platt PDP had no cut sheet — falling through to Tier 2.');
+            // Tier 1: Platt
+            const plattCandidates = await engine.getPlattCandidates(task.searchQuery);
+            if (plattCandidates.length > 0) {
+                complianceScore = await ai.selectBestProduct(plattCandidates, task.productType, task.keyRequirements, task.manufacturers);
+                if (complianceScore && complianceScore.confidence >= CONFIDENCE_MIN) {
+                    const winner = plattCandidates[complianceScore.selectedIndex];
+                    const pdp = await engine.getPlattPDP(winner.href, task.searchQuery);
+                    if (pdp?.cutsheetUrl) selectedResult = pdp;
                 }
-            } else {
-                const pct = complianceScore ? `${(complianceScore.confidence * 100).toFixed(0)}%` : '0%';
-                console.log(`[Sourcing] Platt best match too low (${pct}) — trying Tier 2.`);
             }
-        } else {
-            console.log('[Sourcing] No Platt results — trying Tier 2.');
-        }
 
-        // ── STEP 3: Try North Coast if Platt failed or scored too low ──
-        if (!selectedResult) {
-            console.log('\n[Sourcing] Tier 2: North Coast Electric...');
-            const ncCandidates = await engine.getNorthCoastCandidates(searchQuery);
-
-            if (ncCandidates.length > 0) {
-                const ncScore = await ai.selectBestProduct(ncCandidates, sectionTitle, keyRequirements, manufacturers);
-                if (ncScore && ncScore.confidence >= CONFIDENCE_MIN) {
-                    const winner = ncCandidates[ncScore.selectedIndex];
-                    console.log(`[Sourcing] ✓ NorthCoast winner: "${winner.title}" (${(ncScore.confidence * 100).toFixed(0)}% match)`);
-                    const pdp = await engine.getNorthCoastPDP(winner.href);
-                    if (pdp?.cutsheetUrl) {
-                        selectedResult = pdp;
-                        complianceScore = ncScore;
-                    }
-                } else {
-                    const pct = ncScore ? `${(ncScore.confidence * 100).toFixed(0)}%` : '0%';
-                    console.log(`[Sourcing] NorthCoast best match too low (${pct}) — trying Tier 3.`);
-                    // Use NC score if it's better than Platt score we had
-                    if (!complianceScore || (ncScore?.confidence > complianceScore?.confidence)) {
-                        complianceScore = ncScore;
+            // Tier 2: North Coast
+            if (!selectedResult) {
+                const ncCandidates = await engine.getNorthCoastCandidates(task.searchQuery);
+                if (ncCandidates.length > 0) {
+                    const ncScore = await ai.selectBestProduct(ncCandidates, task.productType, task.keyRequirements, task.manufacturers);
+                    if (ncScore && ncScore.confidence >= CONFIDENCE_MIN) {
+                        const winner = ncCandidates[ncScore.selectedIndex];
+                        const pdp = await engine.getNorthCoastPDP(winner.href);
+                        if (pdp?.cutsheetUrl) {
+                            selectedResult = pdp;
+                            complianceScore = ncScore;
+                        }
                     }
                 }
             }
-        }
 
-        // ── STEP 4: Manufacturer direct fallback — try each listed brand ──
-        if (!selectedResult && manufacturers.length > 0) {
-            console.log('\n[Sourcing] Tier 3: Manufacturer direct...');
-            for (const brand of manufacturers) {
-                const mfgResult = await engine.sourceFromManufacturerDirect(brand, searchQuery);
-                if (mfgResult?.cutsheetUrl) {
-                    selectedResult = mfgResult;
-                    if (!complianceScore) {
-                        complianceScore = {
-                            confidence: 0.65,
-                            reason: `Sourced directly from ${brand} — no distributor stock found.`,
-                            matchedRequirements: [],
-                            unmatchedRequirements: keyRequirements
-                        };
+            // Tier 3: Manufacturer Direct
+            if (!selectedResult && task.manufacturers?.length > 0) {
+                for (const brand of task.manufacturers) {
+                    const mfgResult = await engine.sourceFromManufacturerDirect(brand, task.searchQuery);
+                    if (mfgResult?.cutsheetUrl) {
+                        selectedResult = mfgResult;
+                        complianceScore = complianceScore || { confidence: 0.65, reason: `Direct from ${brand}`, matchedRequirements: [] };
+                        break;
                     }
-                    break;
                 }
+            }
+
+            if (selectedResult) {
+                selectedResult.productType = task.productType;
+                selectedResult.complianceScore = complianceScore?.confidence;
+                selectedResult.complianceReason = complianceScore?.reason;
+                selectedResult.matchedRequirements = complianceScore?.matchedRequirements || [];
+                selectedResult.keyRequirements = task.keyRequirements;
+                
+                // Highlight extraction (simplified for multi-run)
+                if (selectedResult.cutsheetUrl && selectedResult.matchedRequirements.length > 0) {
+                    try {
+                        const hEngine = new HighlighterEngine();
+                        const pdfPath = await hEngine.download(selectedResult.cutsheetUrl, `tmp_${Date.now()}.pdf`);
+                        const highlights = {};
+                        for (const req of selectedResult.matchedRequirements.slice(0, 3)) { // Limit to 3 for speed
+                            const coords = await hEngine.findCoordinates(pdfPath, req);
+                            if (coords) highlights[req] = coords;
+                        }
+                        selectedResult.highlights = highlights;
+                        if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+                    } catch (e) {}
+                }
+                finalResults.push(selectedResult);
             }
         }
 
         await engine.shutdown();
 
-        // ── STEP 5: Build response ──
-        if (selectedResult) {
-            selectedResult.aiExtractedQuery = searchQuery;
-            selectedResult.productType = aiResult.productType || sectionTitle;
-            selectedResult.specManufacturers = manufacturers;
-            selectedResult.keyRequirements = keyRequirements;
-
-            // Attach compliance score
-            if (complianceScore) {
-                selectedResult.complianceScore = complianceScore.confidence;
-                selectedResult.matchedRequirements = complianceScore.matchedRequirements || [];
-                selectedResult.unmatchedRequirements = complianceScore.unmatchedRequirements || [];
-                selectedResult.complianceReason = complianceScore.reason;
-                selectedResult.needsReview = complianceScore.confidence < 0.8; // orange flag if 60-79%
-            }
-
-            // ── STEP 6: Highlighting Coordinates ──
-            if (selectedResult.cutsheetUrl && selectedResult.matchedRequirements && selectedResult.matchedRequirements.length > 0) {
-                try {
-                    const hEngine = new HighlighterEngine();
-                    const tmpFilename = `tmp_source_${Date.now()}.pdf`;
-                    console.log('[API] Downloading cutsheet to extract highlight coordinates...');
-                    const pdfPath = await hEngine.download(selectedResult.cutsheetUrl, tmpFilename);
-                    
-                    const highlights = {};
-                    for (const req of selectedResult.matchedRequirements) {
-                        try {
-                            // Find coordinates for the exact string, or the most prominent word in the string
-                            // Using the raw req text first
-                            const coords = await hEngine.findCoordinates(pdfPath, req);
-                            if (coords && coords.length > 0) {
-                                highlights[req] = coords;
-                            } else {
-                                // Fallback: try finding just the first significant word if full phrase fails
-                                const firstWord = req.split(' ').find(w => w.length > 3);
-                                if (firstWord) {
-                                    const fallbackCoords = await hEngine.findCoordinates(pdfPath, firstWord);
-                                    if (fallbackCoords && fallbackCoords.length > 0) {
-                                        highlights[req] = fallbackCoords;
-                                    }
-                                }
-                            }
-                        } catch (e) {}
-                    }
-                    selectedResult.highlights = highlights;
-                    console.log(`[API] Extracted highlights for ${Object.keys(highlights).length} parameters.`);
-                    
-                    // Cleanup temp pdf
-                    if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
-                } catch (err) {
-                    console.error('[API] Error extracting highlights:', err);
-                }
-            }
-
-            console.log(`\n[Sourcing] ✅ Final result: "${selectedResult.title}" | Compliance: ${selectedResult.complianceScore ? `${(selectedResult.complianceScore * 100).toFixed(0)}%` : 'N/A'}`);
-            return res.json({ success: true, result: selectedResult });
+        if (finalResults.length > 0) {
+            console.log(`\n[Sourcing] ✅ Found ${finalResults.length} items for this block.`);
+            return res.json({ success: true, results: finalResults });
         }
 
-        // Nothing found above threshold
-        console.log('\n[Sourcing] ❌ No compliant product found across all tiers.');
-        return res.json({
-            success: false,
-            reason: 'no_match',
-            message: `Could not find a product matching the spec requirements above ${CONFIDENCE_MIN * 100}% confidence.`,
-            compliance: complianceScore
-        });
+        return res.json({ success: false, reason: 'no_match', message: 'No compliant products found.' });
 
     } catch (error) {
         console.error('[API] Sourcing Error:', error);

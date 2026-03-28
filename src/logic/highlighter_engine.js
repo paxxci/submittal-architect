@@ -57,9 +57,20 @@ class HighlighterEngine {
             const textContent = await page.getTextContent();
             const viewport = page.getViewport({ scale: 1.0 });
 
+            // Normalize search text: remove non-alphanumeric for a "fuzzy" check
+            const cleanSearch = searchText.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (cleanSearch.length < 2) continue; // Skip too-short search terms
+
             for (const item of textContent.items) {
-                if (item.str.toLowerCase().includes(searchText.toLowerCase())) {
-                    // pdfjs transform: [scaleX, skewY, skewX, scaleY, translateX, translateY]
+                const cleanItem = item.str.toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                // Strategy 1: Direct or normalized match
+                const isMatch = item.str.toLowerCase().includes(searchText.toLowerCase()) || 
+                               (cleanItem.includes(cleanSearch) && cleanSearch.length > 3);
+
+                if (isMatch) {
+                    // pdfjs transform: [scaleY, skewX, skewY, scaleX, translateX, translateY]
+                    // NOTE: pdfjs coordinate system is Y-up from bottom-left
                     const transform = item.transform;
                     matches.push({
                         pageIndex: i - 1,
@@ -67,7 +78,8 @@ class HighlighterEngine {
                         y: transform[5],
                         width: item.width,
                         height: item.height,
-                        pageHeight: viewport.height
+                        pageHeight: viewport.height,
+                        matchedText: item.str
                     });
                 }
             }

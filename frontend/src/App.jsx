@@ -1,13 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
     LayoutDashboard, FileSearch, ClipboardCheck, 
     Settings, Bell, Search, ChevronRight, 
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
-    FileText, ExternalLink, Briefcase, Building2, Trash2, Maximize, X
+    FileText, ExternalLink, Briefcase, Building2, Trash2, Maximize, X,
+    Bot, Loader2
 } from 'lucide-react'
 import { supabase } from './supabase'
-import { useEffect } from 'react'
+import ReactDOM from 'react-dom'
 import './App.css'
 
 const MOCK_PROJECT = {
@@ -218,6 +219,34 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
     );
 };
 
+// Error Boundary for UI Safety
+class ErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+    static getDerivedStateFromError(error) { return { hasError: true, error }; }
+    componentDidCatch(error, info) { console.error("CRASH_LOG:", error, info); }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: 40, background: "#0a0b0e", color: "#ff4d4d", height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                    <div style={{ fontSize: 64, marginBottom: 20 }}>⚠</div>
+                    <h1 style={{ fontSize: 32, fontWeight: 900, marginBottom: 10 }}>CRASH DETECTED</h1>
+                    <p style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", marginBottom: 30 }}>Submittal Architect encountered a rendering error. Our AI is tracking the stack trace.</p>
+                    <pre style={{ background: "rgba(0,0,0,0.5)", padding: 20, borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", textAlign: "left", fontSize: 12, maxWidth: "80%", overflow: "auto" }}>
+                        {this.state.error?.stack}
+                    </pre>
+                    <button 
+                        onClick={() => location.reload()} 
+                        style={{ marginTop: 40, padding: "12px 24px", background: "#ff6b00", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
+                    >
+                        Reload Interface
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 function App() {
     const [view, setView] = useState('portfolio') // portfolio, dashboard, workbench
     const [activeProject, setActiveProject] = useState(null)
@@ -246,6 +275,9 @@ function App() {
     const [customDivisionInput, setCustomDivisionInput] = useState('')
     const [vendors, setVendors] = useState(['Platt', 'Hubbell', 'North Coast'])
     const [manufacturers, setManufacturers] = useState(['Hubbell', 'Leviton', 'Eaton'])
+    const [activeSubProductIndex, setActiveSubProductIndex] = useState(0) // Tracks which item in a multi-product stack is visible
+
+    const isSourcing = activeSourcingBlockId === selectedSpec?.id;
 
     // Manual section add state
     const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false)
@@ -300,7 +332,7 @@ function App() {
             const isElectrical = ['26','27','28'].includes(divPrefix);
 
             const record = {
-                project_id: projectData.id,
+                project_id: projectData?.id,
                 section_id: sectionNum,
                 section_number: addSectionData.sectionNumber.trim().toUpperCase(),
                 title: addSectionData.title.trim().toUpperCase() || 'MANUAL ENTRY',
@@ -395,7 +427,7 @@ function App() {
             setSelectedSpec(uiItems[0] || null);
         } else if (selectedSpec) {
              // Keep current spec object updated with any new database metadata
-             const refreshedSpec = uiItems.find(i => i.id === selectedSpec.id);
+             const refreshedSpec = uiItems.find(i => i.id === selectedSpec?.id);
              if (refreshedSpec) setSelectedSpec(refreshedSpec);
         }
     };
@@ -795,35 +827,35 @@ function App() {
                                     { id: '26', title: 'Electrical' },
                                     { id: '27', title: 'Communications' },
                                     { id: '28', title: 'Electronic Safety and Security' }
-                                ].map(div => (
+                                ].map(divItem => (
                                     <div 
-                                        key={div.id}
-                                        className={`division-item ${newProjectData.divisions[div.id] ? 'selected' : ''}`}
+                                        key={divItem.id}
+                                        className={`division-item ${newProjectData.divisions[divItem.id] ? 'selected' : ''}`}
                                         onClick={() => setNewProjectData({
                                             ...newProjectData, 
-                                            divisions: {...newProjectData.divisions, [div.id]: !newProjectData.divisions[div.id]}
+                                            divisions: {...newProjectData.divisions, [divItem.id]: !newProjectData.divisions[divItem.id]}
                                         })}
                                     >
                                         <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
                                             <div className="checkbox-box">
-                                                {newProjectData.divisions[div.id] && <CheckCircle2 size={14} />}
+                                                {newProjectData.divisions[divItem.id] && <CheckCircle2 size={14} />}
                                             </div>
                                             <div>
-                                                <h4 style={{fontSize: '14px', fontWeight: 700}}>Division {div.id}</h4>
-                                                <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>{div.title}</p>
+                                                <h4 style={{fontSize: '14px', fontWeight: 700}}>Division {divItem.id}</h4>
+                                                <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>{divItem.title}</p>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
 
                                 {/* Custom Divisions List */}
-                                {newProjectData.customDivisions.map(div => (
+                                {newProjectData.customDivisions.map(divName => (
                                      <div 
-                                        key={div}
+                                        key={divName}
                                         className="division-item selected"
                                         onClick={() => setNewProjectData({
                                             ...newProjectData, 
-                                            customDivisions: newProjectData.customDivisions.filter(d => d !== div)
+                                            customDivisions: newProjectData.customDivisions.filter(d => d !== divName)
                                         })}
                                     >
                                         <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
@@ -831,7 +863,7 @@ function App() {
                                                 <CheckCircle2 size={14} />
                                             </div>
                                             <div>
-                                                <h4 style={{fontSize: '14px', fontWeight: 700}}>Division {div}</h4>
+                                                <h4 style={{fontSize: '14px', fontWeight: 700}}>Division {divName}</h4>
                                                 <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>Custom Reference</p>
                                             </div>
                                         </div>
@@ -921,7 +953,7 @@ function App() {
 
         // Persist to Supabase if we have a valid section
         const specId = blockId.split('___')[0];
-        const section = projectData.recentItems.find(s => s.id === specId);
+        const section = projectData?.recentItems.find(s => s.id === specId);
         if (section?.dbId) {
             await supabase
                 .from('spec_sections')
@@ -983,21 +1015,27 @@ function App() {
                 
                 clearInterval(progressTimer);
                 setSourcingProgressPct(100);
-                
-                if (data.success && data.result?.cutsheetUrl) {
-                    // IMMEDIATELY update selectedSpec so right column shows the iframe
-                    // Save at block level: metadata.sourcedBlocks[blockKey]
+                const results = Array.isArray(data.results) ? data.results : (data.result ? [data.result] : []);
+                if (data.success && results.length > 0) {
                     const activeBlockKey = blockKey || blockTitle || blockId;
+                    
                     setSelectedSpec(prev => ({
                         ...prev,
                         metadata: {
                             ...prev?.metadata,
                             sourcedBlocks: {
                                 ...(prev?.metadata?.sourcedBlocks || {}),
-                                [activeBlockKey]: data.result
+                                [activeBlockKey]: results
                             }
                         }
                     }));
+
+                    setActiveSubProductIndex(0);
+
+                    // Proactively set the first matched requirement as highlighted
+                    if (results[0]?.matchedRequirements && results[0].matchedRequirements.length > 0) {
+                        setHoveredRequirement(results[0].matchedRequirements[0]);
+                    }
 
                     // Persist to Supabase in the background (non-blocking)
                     const currentMeta = section.metadata || {};
@@ -1008,7 +1046,7 @@ function App() {
                                 ...currentMeta,
                                 sourcedBlocks: {
                                     ...(currentMeta.sourcedBlocks || {}),
-                                    [activeBlockKey]: data.result
+                                    [activeBlockKey]: results
                                 }
                             }
                         })
@@ -1215,8 +1253,8 @@ function App() {
                             <Box size={24} color="white" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-extrabold tracking-tight">{projectData.name}</h1>
-                            <p className="text-text-muted text-sm">{projectData.client}</p>
+                            <h1 className="text-2xl font-extrabold tracking-tight">{projectData?.name}</h1>
+                            <p className="text-text-muted text-sm">{projectData?.client}</p>
                         </div>
                     </div>
                     <span className="badge badge-orange font-bold">In Progress</span>
@@ -1224,11 +1262,11 @@ function App() {
 
                 <div className="progress-container mb-6">
                     <div className="flex justify-between text-sm mb-2">
-                        <span className="font-bold">{projectData.progress}% complete</span>
-                        <span className="text-text-muted">{projectData.daysLeft} days left</span>
+                        <span className="font-bold">{projectData?.progress}% complete</span>
+                        <span className="text-text-muted">{projectData?.daysLeft} days left</span>
                     </div>
                     <div className="progress-bar-bg h-2 rounded-full overflow-hidden">
-                        <div className="progress-fill h-full bg-accent-primary glow-orange" style={{ width: `${projectData.progress}%` }}></div>
+                        <div className="progress-fill h-full bg-accent-primary glow-orange" style={{ width: `${projectData?.progress}%` }}></div>
                     </div>
                 </div>
 
@@ -1259,7 +1297,7 @@ function App() {
                     </button>
                 </div>
                 <div className="space-y-4">
-                    {projectData.divisions && projectData.divisions.length > 0 ? projectData.divisions.map(div => (
+                    {projectData?.divisions && projectData?.divisions.length > 0 ? projectData?.divisions.map(div => (
                         <div key={div.id} className="division-row prism-card" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
@@ -1400,13 +1438,12 @@ function App() {
                 </div>
             </div>
         </div>
-    )
+    );
 
     const renderWorkbench = () => {
         if (!selectedDivision) return (
             <div className="workbench-root animate-fade-in flex items-center justify-center">
                 <div className="text-center text-text-muted max-w-md w-full px-6">
-                    <div className="p-10 prism-card border-dashed border-accent-primary/20 bg-accent-primary/5">
                         <FileSearch size={64} className="mx-auto mb-6 text-accent-primary animate-pulse" />
                         <h2 className="text-2xl font-black mb-3">Architect is Discovering...</h2>
                         <p className="text-sm mb-8 leading-relaxed">We are scanning the PDF meta-data and mapping sections to your workbench. This takes a moment for 900+ page documents.</p>
@@ -1427,8 +1464,7 @@ function App() {
                         )}
                     </div>
                 </div>
-            </div>
-        );
+            );
 
         return (
         <div className="workbench-root animate-fade-in">
@@ -1442,12 +1478,12 @@ function App() {
 
             {/* Division Tabs */}
             <div className="flex flex-row flex-nowrap gap-3 mb-10 border-b border-border-subtle pb-6 overflow-x-auto custom-scrollbar font-mono">
-                {(projectData.divisions || []).map(div => (
+                {(projectData?.divisions || []).map(div => (
                     <div
                         key={div.id}
                         onClick={() => {
                             setSelectedDivision(div);
-                            const firstSpecInDiv = (projectData.recentItems || []).find(item => item.id.startsWith(div.id));
+                            const firstSpecInDiv = (projectData?.recentItems || []).find(item => item.id.startsWith(div.id));
                             if (firstSpecInDiv) setSelectedSpec(firstSpecInDiv);
                         }}
                         className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${
@@ -1468,7 +1504,6 @@ function App() {
             <div className="workbench-grid">
                 {/* Left side: Spec List */}
                 <div className="workbench-sidebar space-y-3">
-                    {/* Add Section Button */}
                     <button
                         onClick={() => {
                             setAddSectionData(p => ({ ...p, sectionNumber: selectedDivision?.id ? `${selectedDivision.id} ` : '' }));
@@ -1480,7 +1515,7 @@ function App() {
                     >
                         <Plus size={14} /> Add Missing Section
                     </button>
-                    {(projectData.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
+                    {(projectData?.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
                         const p1Progress = calculatePartProgress(item, 'part1');
                         const p2Progress = calculatePartProgress(item, 'part2');
                         const p3Progress = calculatePartProgress(item, 'part3');
@@ -1501,7 +1536,6 @@ function App() {
                             </div>
                             <h4 className="font-bold text-sm leading-tight mb-3">{item.title}</h4>
                             
-                            {/* Part Progress Trackers */}
                             <div className="flex flex-col gap-1 mt-auto bg-bg-deep rounded p-3 border border-border-subtle">
                                 <div className="flex justify-between items-center w-full text-xs">
                                     <span className="text-text-muted">Part 1</span>
@@ -1516,7 +1550,6 @@ function App() {
                                     <span className={`font-mono font-bold ${p3Progress === 100 ? 'text-accent-secondary' : p3Progress > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>&nbsp;&nbsp;{p3Progress}%</span>
                                 </div>
 
-                                {/* Responsibility Selector - Dropdown */}
                                 <div className="mt-4 pt-3 border-t border-white/5">
                                     <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest block mb-1.5 px-0.5">Source / Responsibility</label>
                                     <select 
@@ -1544,12 +1577,12 @@ function App() {
                 <div className="workbench-main prism-card flex flex-col h-full">
                     <div className="flex justify-between items-center mb-4">
                         <div className="flex flex-col gap-2">
-                            <h3 className="text-2xl font-bold">{selectedSpec.id.slice(0,2)} {selectedSpec.id.slice(2,4)} {selectedSpec.id.slice(4)} - {selectedSpec.title}</h3>
+                            <h3 className="text-2xl font-bold">{selectedSpec?.id.slice(0,2)} {selectedSpec?.id.slice(2,4)} {selectedSpec?.id.slice(4)} - {selectedSpec?.title}</h3>
                         </div>
                         <div className="flex gap-2">
                             <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
                         </div>
-                    </div>                    {/* Part Tabs styled like section cards, but compact */}
+                    </div>
                     <div className="flex flex-row flex-nowrap gap-3 mb-6 font-mono">
                         <div 
                             className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === 'part1' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
@@ -1576,7 +1609,7 @@ function App() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
-                        {(sectionResponsibility[selectedSpec.id] || 'SELF') === 'NA' ? (
+                        {(sectionResponsibility[selectedSpec?.id] || 'SELF') === 'NA' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center h-full opacity-50 grayscale animate-fade-in">
                                 <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
                                     <ShieldCheck size={48} className="text-text-muted" />
@@ -1585,12 +1618,12 @@ function App() {
                                 <p className="text-text-muted text-sm">This specification section is marked as Not Applicable for this submittal.</p>
                                 <button 
                                     className="btn-secondary mt-6 scale-90"
-                                    onClick={() => setSectionResponsibility({...sectionResponsibility, [selectedSpec.id]: 'SELF'})}
+                                    onClick={() => setSectionResponsibility({...sectionResponsibility, [selectedSpec?.id]: 'SELF'})}
                                 >
                                     Include Section
                                 </button>
                             </div>
-                        ) : (sectionResponsibility[selectedSpec.id] || 'SELF') === 'VENDOR' ? (
+                        ) : (sectionResponsibility[selectedSpec?.id] || 'SELF') === 'VENDOR' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center h-full animate-fade-in">
                                 <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg w-full bg-accent-secondary/5 shadow-[0_0_50px_rgba(0,255,163,0.05)]">
                                     <div className="w-16 h-16 bg-accent-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1608,293 +1641,216 @@ function App() {
                                 </div>
                             </div>
                         ) : (
-                        <div className="col-span-2 grid grid-cols-2 gap-8 h-full">
-                            <div className="flex flex-col h-full">
-                                {/* Dynamic Content based on selected Part */}
-                                <div className="flex-1 pb-[80vh]">
-                                {selectedPart === 'part1' && (
-                                    <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
-                                        <FormattedSpecText
-                                            text={selectedSpec.part1}
-                                            specId={selectedSpec.id}
-                                            partId="part1"
-                                            completedBlocks={completedBlocks}
-                                            naBlocks={naBlocks}
-                                            onToggleBlock={toggleBlockCompletion}
-                                        />
-                                    </div>
-                                )}
-
-                                {selectedPart === 'part3' && (
-                                    <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
-                                        <FormattedSpecText 
-                                            text={selectedSpec.part3} 
-                                            specId={selectedSpec.id} 
-                                            partId="part3"
-                                            completedBlocks={completedBlocks}
-                                            naBlocks={naBlocks}
-                                            onToggleBlock={toggleBlockCompletion}
-                                        />
-                                    </div>
-                                )}
-
-                                {selectedPart === 'part2' && (
-                                    <div className="animate-fade-in h-full">
-                                        {selectedSpec.part2.rawText ? (
-                                            <div className="text-sm text-text-muted leading-relaxed">
-                                        <FormattedSpecText 
-                                            text={selectedSpec.part2.rawText} 
-                                            specId={selectedSpec.id} 
-                                            partId="part2"
-                                            completedBlocks={completedBlocks}
-                                            naBlocks={naBlocks}
-                                            onToggleBlock={toggleBlockCompletion}
-                                            onBlockSelect={(block) => {
-                                                setSelectedBlock(block);
-                                                // Nudging by 82px connects the precise horizontal axis perfectly to the PDF toolbar
-                                                setPdfAlignmentOffset((block.offsetTop || 0) - 82);
-                                            }}
-                                            selectedBlockKey={selectedBlock?.blockKey}
-                                            aiBlocks={selectedSpec.aiBlockMap || null}
-                                        />
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-center h-full text-text-muted">
-                                                No Part 2 content available.
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                </div>
-                            </div>
-
-                        {/* Dynamic PDF Preview / Sourcing Tracker Side */}
-                        {/* Shows: (1) spinner when sourcing, (2) block cut sheet when selected+sourced, (3) placeholder otherwise */}
-                        {(() => {
-                            // Only use block-level storage. Remove section-level fallback to stop ghosting.
-                            const blockCutsheet = selectedBlock?.blockKey 
-                                ? selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey]
-                                : null;
-                            const isSourced = !!blockCutsheet?.cutsheetUrl;
-                            const isSourcing = activeSourcingBlockId === selectedSpec.id;
-                            const isRule = selectedBlock?.isRule;
-                            const candidates = blockCutsheet?.candidates || [];
-                            const selectionReason = blockCutsheet?.selectionReason || null;
-
-                            // Pre-compute complaint view (avoids IIFE-in-ternary JSX lint error)
-                            const score = blockCutsheet?.complianceScore;
-                            const compPct = score != null ? Math.round(score * 100) : null;
-                            const matched = blockCutsheet?.matchedRequirements || [];
-                            const unmatched = blockCutsheet?.unmatchedRequirements || [];
-                            const scoreColor = compPct == null ? 'text-text-muted'
-                                : compPct >= 80 ? 'text-accent-secondary'
-                                : compPct >= 60 ? 'text-amber-400'
-                                : 'text-red-400';
-                            const scoreBg = compPct == null ? 'bg-white/5 border-border-subtle'
-                                : compPct >= 80 ? 'bg-accent-secondary/10 border-accent-secondary/20'
-                                : compPct >= 60 ? 'bg-amber-400/10 border-amber-400/20'
-                                : 'bg-red-400/10 border-red-400/20';
-                            const compLabel = compPct == null ? 'Unverified'
-                                : compPct >= 80 ? 'Spec Compliant'
-                                : compPct >= 60 ? 'Needs Review'
-                                : 'Likely Wrong Product';
-                            return (
-                                <div className="flex flex-col transition-all duration-500 ease-out" style={{ marginTop: pdfAlignmentOffset }}>
-                                    <div className="pdf-preview-prism flex flex-col border-l border-border-subtle bg-bg-deeper" style={{ height: '700px' }}>
-                                        <div className="flex justify-between items-center p-3 border-b border-border-subtle shrink-0 bg-bg-deep">
-                                    <span className="text-xs font-bold text-text-muted flex items-center">
-                                        <FileText size={14} className="mr-2 text-accent-primary" /> 
-                                        {isSourcing ? "SOURCING ENGINE ACTIVE"
-                                            : isSourced ? "VENDOR CUT SHEET REVIEW"
-                                            : selectedBlock ? selectedBlock.blockTitle.slice(0, 40)
-                                            : "SELECT A BLOCK TO VIEW CUT SHEET"}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] uppercase font-bold text-text-muted bg-white/5 py-1 px-3 rounded-full">
-                                            {isSourcing ? "PROCESSING"
-                                                : isSourced ? blockCutsheet.vendor
-                                                : selectedBlock ? "AWAITING SOURCE"
-                                                : `PAGE ${selectedSpec.pageNumber || 1}`}
-                                        </span>
-                                        {isSourced && (
-                                            <button 
-                                                onClick={() => setExpandedPdfUrl(blockCutsheet.cutsheetUrl)}
-                                                className="h-6 w-6 rounded bg-black/20 hover:bg-accent-primary flex items-center justify-center text-text-muted hover:text-black transition-colors shrink-0"
-                                                title="Expand Full Screen"
-                                            >
-                                                <Maximize size={12} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                
-                                <div className="pdf-canvas flex-1 relative flex items-center justify-center overflow-hidden">
-                                    {isSourcing ? (
-                                        <div className="flex flex-col items-center justify-center p-12 text-center animate-fade-in w-full max-w-md">
-                                            <div className="relative mb-8">
-                                                <div className="w-24 h-24 border-[4px] border-bg-deep rounded-full"></div>
-                                                <div 
-                                                    className="w-24 h-24 border-[4px] border-accent-secondary rounded-full absolute top-0 left-0 transition-all duration-500 ease-out"
-                                                    style={{ clipPath: `inset(0 0 ${100 - sourcingProgressPct}% 0)` }}
-                                                ></div>
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <span className="text-xl font-black text-accent-secondary">{sourcingProgressPct}%</span>
-                                                </div>
-                                            </div>
-                                            <h3 className="text-2xl font-black mb-2 tracking-tight uppercase">Searching for Cut Sheets</h3>
-                                            <p className="text-text-muted text-sm mb-8 line-clamp-2 leading-relaxed">Cross-referencing parameters for:<br/><strong className="text-white mt-1 block">{selectedBlock?.blockTitle || selectedSpec.title}</strong></p>
-                                            <div className="w-full bg-black/30 h-2 rounded-full overflow-hidden border border-white/5 relative">
-                                                <div className="h-full bg-gradient-to-r from-accent-primary to-accent-secondary transition-all duration-500 ease-out shine-effect rounded-full" style={{ width: `${sourcingProgressPct}%` }}></div>
-                                            </div>
-                                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-[0.2em] mt-4">Autonomous Search &amp; Rescue Engine</p>
-                                        </div>
-                                    ) : isRule ? (
-                                        <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">
-                                            <div className="w-16 h-16 rounded-full border-2 border-text-muted/30 flex items-center justify-center mb-6">
-                                                <FileText size={28} className="text-text-muted" />
-                                            </div>
-                                            <h4 className="font-bold text-sm uppercase tracking-widest text-text-muted mb-3">Specification Rule</h4>
-                                            <p className="text-text-muted text-xs leading-relaxed">This block defines requirements and sizing rules that apply to other products in this section. No cut sheet is needed — these requirements will be used when verifying other products.</p>
-                                        </div>
-                                    ) : isSourced ? (
-                                        <div className="flex flex-col h-full animate-fade-in">
-                                            {/* Compliance header bar */}
-                                            <div className={`shrink-0 px-3 py-2 border-b flex items-center justify-between gap-3 ${scoreBg}`}>
-                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                    {compPct != null && (
-                                                        <span className={`font-black text-lg leading-none ${scoreColor}`}>{compPct}%</span>
-                                                    )}
-                                                    <div className="min-w-0">
-                                                        <div className={`text-[10px] font-bold uppercase tracking-widest ${scoreColor}`}>
-                                                            {compLabel}
-                                                        </div>
-                                                        {blockCutsheet.complianceReason && (
-                                                            <div className="text-[9px] text-text-muted truncate">{blockCutsheet.complianceReason}</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="text-right shrink-0 flex items-center gap-4">
-                                                    <div>
-                                                        {blockCutsheet.price && (
-                                                            <div className="text-accent-secondary font-black text-[13px]">{blockCutsheet.price}</div>
-                                                        )}
-                                                        <div className="text-[10px] text-text-muted">{blockCutsheet.vendorShort || blockCutsheet.vendor}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Matched / Unmatched requirements */}
-                                            {(matched.length > 0 || unmatched.length > 0) && (
-                                                <div className="shrink-0 px-3 py-2 border-b border-border-subtle bg-bg-deeper flex gap-4">
-                                                    {matched.length > 0 && (
-                                                        <div className="flex-1">
-                                                            <p className="text-[9px] text-accent-secondary uppercase tracking-widest font-bold mb-1">✓ Matched</p>
-                                                            {matched.map((r, i) => (
-                                                                <div 
-                                                                    key={i} 
-                                                                    className="text-[10px] text-accent-secondary flex items-start gap-1 leading-tight mb-0.5 cursor-crosshair hover:bg-accent-secondary/20 p-0.5 rounded transition-colors"
-                                                                    onMouseEnter={() => setHoveredRequirement(r)}
-                                                                    onMouseLeave={() => setHoveredRequirement(null)}
-                                                                >
-                                                                    <span className="shrink-0">✓</span><span>{r}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    {unmatched.length > 0 && (
-                                                        <div className="flex-1">
-                                                            <p className="text-[9px] text-amber-400 uppercase tracking-widest font-bold mb-1">⚠ Not Confirmed</p>
-                                                            {unmatched.map((r, i) => (
-                                                                <div key={i} className="text-[10px] text-amber-400/80 flex items-start gap-1 leading-tight mb-0.5">
-                                                                    <span className="shrink-0">?</span><span>{r}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* PDF iframe with dynamic Highlighting Overlay */}
-                                            <div className="flex-1 p-2 bg-black/20 min-h-0 relative overflow-hidden">
-                                                <iframe
-                                                    src={blockCutsheet.cutsheetUrl}
-                                                    className="w-full h-full border border-white/10 rounded-lg shadow-2xl bg-white pointer-events-auto"
-                                                    title="Vendor Cut Sheet"
+                            <div className="col-span-2 grid grid-cols-2 gap-8 h-full">
+                                <div className="flex flex-col h-full overflow-hidden">
+                                    <div className="flex-1 pb-[80vh] overflow-y-auto custom-scrollbar">
+                                        {selectedPart === 'part1' && (
+                                            <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
+                                                <FormattedSpecText
+                                                    text={selectedSpec?.part1}
+                                                    specId={selectedSpec?.id}
+                                                    partId="part1"
+                                                    completedBlocks={completedBlocks}
+                                                    naBlocks={naBlocks}
+                                                    onToggleBlock={toggleBlockCompletion}
                                                 />
-                                                
-                                                {/* X-Ray Hover Box layer */}
-                                                {hoveredRequirement && blockCutsheet.highlights?.[hoveredRequirement] && (
-                                                    <div className="absolute inset-2 pointer-events-none rounded-lg overflow-hidden z-10">
-                                                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] transition-all duration-300"></div>
-                                                        {blockCutsheet.highlights[hoveredRequirement].map((coord, idx) => {
-                                                            // Calculate rough percentage coordinates relative to the 8.5x11 PDF canvas
-                                                            // Using PDF standard 612x792 pt sizing (assumes scale to fit)
-                                                            const pageHeight = coord.pageHeight || 792;
-                                                            const pageWidth = 612; // Standard width
-                                                            const topPct = (coord.pageHeight ? (coord.pageHeight - coord.y) / coord.pageHeight : (792 - coord.y) / 792) * 100;
-                                                            const leftPct = (coord.x / pageWidth) * 100;
-                                                            
-                                                            return (
-                                                                <div 
-                                                                    key={idx}
-                                                                    className="highlight-box absolute border-2 border-accent-secondary bg-accent-secondary/20 animate-pulse shadow-[0_0_30px_rgba(0,255,163,0.5)] z-20"
-                                                                    style={{
-                                                                        top: `max(5%, calc(${topPct}% - 40%))`, // Approximate visual centering for the demo
-                                                                        left: `${Math.max(5, leftPct - 5)}%`,
-                                                                        width: `${Math.min(90, (coord.width / pageWidth) * 100 + 10)}%`,
-                                                                        height: '40px',
-                                                                        borderRadius: '4px'
-                                                                    }}
-                                                                >
-                                                                    <div className="absolute -top-6 left-0 bg-bg-deep border border-accent-secondary text-accent-secondary text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-widest whitespace-nowrap">
-                                                                        Target Located: Page {coord.pageIndex + 1}
-                                                                    </div>
-                                                                </div>
-                                                            )
-                                                        })}
+                                            </div>
+                                        )}
+
+                                        {selectedPart === 'part3' && (
+                                            <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
+                                                <FormattedSpecText 
+                                                    text={selectedSpec?.part3} 
+                                                    specId={selectedSpec?.id} 
+                                                    partId="part3"
+                                                    completedBlocks={completedBlocks}
+                                                    naBlocks={naBlocks}
+                                                    onToggleBlock={toggleBlockCompletion}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedPart === 'part2' && (
+                                            <div className="animate-fade-in h-full">
+                                                {selectedSpec?.part2?.rawText ? (
+                                                    <div className="text-sm text-text-muted leading-relaxed">
+                                                        <FormattedSpecText 
+                                                            text={selectedSpec?.part2?.rawText} 
+                                                            specId={selectedSpec?.id} 
+                                                            partId="part2"
+                                                            completedBlocks={completedBlocks}
+                                                            naBlocks={naBlocks}
+                                                            onToggleBlock={toggleBlockCompletion}
+                                                            onBlockSelect={(block) => {
+                                                                setSelectedBlock(block);
+                                                                setActiveSubProductIndex(0);
+                                                                setPdfAlignmentOffset((block.offsetTop || 0) - 138);
+                                                            }}
+                                                            selectedBlockKey={selectedBlock?.blockKey}
+                                                            aiBlocks={selectedSpec?.aiBlockMap || null}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center justify-center h-full text-text-muted">
+                                                        No Part 2 content available.
                                                     </div>
                                                 )}
                                             </div>
-                                        </div>
-                                    ) : selectedBlock ? (
-                                        <div className="flex flex-col items-center justify-center p-10 text-center animate-fade-in max-w-sm">
-                                            <div className="w-16 h-16 rounded-full border-2 border-dashed border-accent-primary/30 flex items-center justify-center mb-6">
-                                                <Search size={28} className="text-accent-primary" />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Right Side: PDF / Sourcing View */}
+                                <div className="flex flex-col h-full overflow-hidden border-l border-white/5">
+                                    {isSourcing ? (
+                                        <div className="flex flex-col items-center justify-center p-12 text-center w-full h-full">
+                                            <div className="relative mb-8">
+                                                <div className="w-24 h-24 border-[4px] border-bg-deep rounded-full"></div>
+                                                <div className="w-24 h-24 border-[4px] border-accent-secondary rounded-full absolute top-0 left-0 animate-pulse"></div>
                                             </div>
-                                            <h4 className="font-bold text-sm uppercase tracking-widest text-accent-primary mb-3">Ready to Source</h4>
-                                            <p className="text-text-muted text-xs leading-relaxed mb-6">Click "Find Cutsheet" on the block to search vendors for this item.</p>
+                                            <h3 className="text-2xl font-black uppercase tracking-tight">Sourcing Intelligence...</h3>
                                         </div>
-                                    ) : (
-                                        <>
-                                            {/* Mock PDF Background */}
-                                            <div className="w-full h-full opacity-10 flex flex-col gap-4 p-8">
-                                                {[...Array(20)].map((_, i) => (
-                                                    <div key={i} className="h-2 bg-white rounded" style={{width: `${Math.random() * 60 + 40}%`}}></div>
-                                                ))}
+                                    ) : (selectedBlock?.isRule) ? (
+                                        <div className="flex flex-col items-center justify-center p-10 text-center h-full">
+                                            <FileText size={48} className="text-text-muted mb-4 opacity-50" />
+                                            <h4 className="font-bold uppercase tracking-widest text-text-muted">Specification Rule</h4>
+                                            <p className="text-text-muted text-xs px-10">No cutsheet needed for rule blocks.</p>
+                                        </div>
+                                    ) : (() => {
+                                        const blockData = selectedBlock?.blockKey ? selectedSpec?.metadata?.sourcedBlocks?.[selectedBlock.blockKey] : null;
+                                        if (!blockData) return (
+                                            <div className="flex flex-col items-center justify-center p-12 text-center h-full opacity-50">
+                                                <Search size={32} className="mb-4" />
+                                                <p className="text-sm uppercase tracking-widest font-bold">Select a block to source</p>
                                             </div>
-                                            
-                                            {/* Real-time Highlighting Overlay */}
-                                            {selectedSpec.coordinates && (
-                                                <div 
-                                                    className="highlight-box absolute border-2 border-accent-primary bg-accent-primary/10 animate-pulse pointer-events-none"
-                                                    style={{
-                                                        top: '20%', 
-                                                        left: `${(selectedSpec.coordinates.x / 612) * 100}%`,
-                                                        width: `${(selectedSpec.coordinates.w / 612) * 100}%`,
-                                                        height: '24px'
-                                                    }}
-                                                >
+                                        );
+
+                                        const items = Array.isArray(blockData) ? blockData : [blockData];
+                                        const currentItem = items[activeSubProductIndex] || items[0];
+                                        // console.log("[Architect Debug] Current Product Item:", currentItem);
+
+                                        const score = currentItem.complianceScore;
+                                        const compPct = score != null ? Math.round(score * 100) : 0;
+                                        const matched = currentItem.matchedRequirements || [];
+                                        const scoreColor = compPct >= 80 ? "text-accent-secondary" : compPct >= 60 ? "text-amber-400" : "text-red-400";
+                                        const scoreBg = compPct >= 80 ? "bg-accent-secondary/10 border-accent-secondary/20" : compPct >= 60 ? "bg-amber-400/10 border-amber-400/20" : "bg-red-400/10 border-red-400/20";
+                                        const compLabel = compPct >= 80 ? "Spec Compliant" : compPct >= 60 ? "Needs Review" : "Likely Wrong Product";
+
+                                        return (
+                                            <div className="flex flex-col h-full overflow-hidden">
+                                                {/* Streamlined Sourcing Header */}
+                                                <div className="sourcing-clean-header flex flex-col gap-4">
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className={`badge ${compPct >= 80 ? 'badge-green' : 'badge-orange'}`}>
+                                                                    {compPct}% {compLabel}
+                                                                </span>
+                                                                <span className="text-[10px] uppercase font-black tracking-widest text-text-muted opacity-50">
+                                                                    {currentItem.vendor || "Verified Source"}
+                                                                </span>
+                                                            </div>
+                                                            <h3 className="text-lg font-extrabold text-white tracking-tight uppercase leading-tight">
+                                                                {selectedBlock?.blockTitle || "Product Review"}
+                                                            </h3>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={() => setExpandedPdfUrl(currentItem.cutsheetUrl)}
+                                                                className="btn-icon !w-9 !h-9 border-white/5 bg-white/5 hover:bg-white/10 transition-all"
+                                                                title="Expand Preview"
+                                                            >
+                                                                <Maximize size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Standardized Product Tabs (Matches Part 1/2/3 style) */}
+                                                    {items.length > 1 && (
+                                                        <div className="product-tab-grid">
+                                                            {items.map((item, idx) => (
+                                                                <div 
+                                                                    key={idx}
+                                                                    onClick={() => setActiveSubProductIndex(idx)}
+                                                                    className={`item-card prism-card !w-20 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-1.5 ${activeSubProductIndex === idx ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                                                                >
+                                                                    <h4 className="font-bold text-[8px] uppercase opacity-70">ITEM {idx + 1}</h4>
+                                                                    <span className="text-[8px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full">
+                                                                        {item.productType?.split(' ')[0] || "Select"}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Simplified Architect Reasoning */}
+                                                    <div className="architect-reasoning-block">
+                                                        <div className="label">Architect Reasoning</div>
+                                                        <p className="text-[11px] text-text-muted leading-relaxed font-medium italic">
+                                                            "{currentItem.complianceReason || "This product matches the base requirements for this section."}"
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </>
-                                    )}
+
+                                                <div className="shrink-0 bg-bg-deeper border-b border-border-subtle shadow-inner custom-scrollbar overflow-y-auto" style={{ maxHeight: '180px' }}>
+                                                    <div className="px-5 py-3 flex justify-between items-center border-b border-white/5 opacity-80">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
+                                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-secondary">Extraction Proof</span>
+                                                        </div>
+                                                        <span className="text-[8px] font-mono text-text-muted opacity-50 uppercase tracking-tighter">Verified against master spec</span>
+                                                    </div>
+                                                    <div className="p-4 flex flex-wrap gap-2">
+                                                        {matched.map((r, i) => (
+                                                            <div 
+                                                                key={i} 
+                                                                className="proof-tag animate-fade-in"
+                                                                onMouseEnter={() => setHoveredRequirement(r)}
+                                                            >
+                                                                <CheckCircle2 size={10} />
+                                                                <span>{r}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex-1 relative bg-black/10 flex flex-col">
+                                                    {currentItem?.cutsheetUrl ? (
+                                                        <iframe 
+                                                            key={`${currentItem.cutsheetUrl}-${activeSubProductIndex}`}
+                                                            src={`${currentItem.cutsheetUrl}#navpanes=0&toolbar=0&view=Fit&page=${(hoveredRequirement && currentItem.highlights?.[hoveredRequirement]?.[0]?.pageIndex + 1) || 1}`} 
+                                                            className="w-full h-full border-none flex-1" 
+                                                            title="Cutsheet Preview"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                                                            <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                                                                <FileSearch size={32} className="text-text-muted" />
+                                                            </div>
+                                                            <h4 className="font-bold text-white uppercase tracking-tight">Direct PDF Not Found</h4>
+                                                            <p className="text-xs text-text-muted max-w-[200px] mt-2 italic leading-relaxed">
+                                                                Architect confirmed product match via web data, but a direct cutsheet link was not extracted.
+                                                            </p>
+                                                            {currentItem?.pdpUrl && (
+                                                                <a 
+                                                                    href={currentItem.pdpUrl} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="btn-secondary !py-2 !px-4 mt-6 scale-90 flex items-center gap-2"
+                                                                >
+                                                                    <ExternalLink size={14} />
+                                                                    View Vendor Page
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
-                        </div>
-                        );
-                    })()}
-                        </div>
-              )}
+                        )}
                     </div>
                 </div>
                 ) : (
@@ -1906,8 +1862,9 @@ function App() {
                 )}
             </div>
         </div>
-        )
-    }
+    );
+};
+
 
 
     const renderAddSectionModal = () => {
@@ -1985,7 +1942,66 @@ function App() {
     };
 
     return (
-        <>
+        <ErrorBoundary>
+            <>
+            {expandedPdfUrl && ReactDOM.createPortal(
+                <div 
+                    id="pdf-lightbox-overlay"
+                    style={{ 
+                        position: 'fixed', 
+                        top: 0, 
+                        left: 0, 
+                        width: '100vw', 
+                        height: '100vh', 
+                        zIndex: 99999, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        backgroundColor: 'rgba(0,0,0,0.9)', 
+                        backdropFilter: 'blur(12px)',
+                        padding: '12px'
+                    }}
+                    onClick={() => setExpandedPdfUrl(null)}
+                >
+                    <div 
+                        style={{ 
+                            backgroundColor: '#0a0b0e', 
+                            width: '98%', 
+                            height: '98%', 
+                            borderRadius: '20px', 
+                            border: '1px solid rgba(255,255,255,0.1)', 
+                            boxShadow: '0 0 100px rgba(0,0,0,0.8)', 
+                            overflow: 'hidden', 
+                            display: 'flex', 
+                            flexDirection: 'column',
+                            position: 'relative',
+                            animation: 'scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <FileText style={{ color: '#ff6b00' }} size={24} />
+                                <span style={{ fontWeight: 900, letterSpacing: '0.1em', fontSize: '14px', color: '#fff', textTransform: 'uppercase' }}>Expanded Document View</span>
+                            </div>
+                            <button 
+                                onClick={() => setExpandedPdfUrl(null)}
+                                style={{ height: '40px', width: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div style={{ flex: 1, backgroundColor: '#fff', position: 'relative' }}>
+                            <iframe 
+                                src={`${expandedPdfUrl}#navpanes=0&toolbar=1&zoom=100`} 
+                                style={{ width: '100%', height: '100%', border: 'none' }}
+                                title="Expanded PDF View"
+                            />
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
             <div className="app-shell bg-bg-deep">
                 {/* Nav Rail */}
                 <aside className="nav-rail">
@@ -2080,35 +2096,10 @@ function App() {
                 </div>
             )}
 
-            {/* FULLSCREEN PDF MODAL OVERLAY */}
-            {expandedPdfUrl && (
-                <div className="fixed inset-0 z-[2000] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-8 animate-fade-in">
-                    <div className="w-full max-w-7xl h-full flex flex-col gap-4">
-                        <div className="flex justify-between items-center shrink-0">
-                            <h2 className="text-xl font-black tracking-widest text-white flex items-center gap-3">
-                                <FileText size={20} className="text-accent-primary" />
-                                FULL SCREEN DOCUMENT VIEWER
-                            </h2>
-                            <button 
-                                onClick={() => setExpandedPdfUrl(null)}
-                                className="h-10 w-10 rounded-full bg-white/10 hover:bg-accent-primary flex items-center justify-center text-white transition-colors border border-white/20"
-                                title="Close Full Screen"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="flex-1 bg-white rounded-xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/20 relative">
-                            <iframe
-                                src={expandedPdfUrl}
-                                className="w-full h-full border-none absolute inset-0"
-                                title="Expanded Vendor Cut Sheet"
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* PDF Lightbox Modal */}
         </>
-    )
+      </ErrorBoundary>
+    );
 }
 
 export default App

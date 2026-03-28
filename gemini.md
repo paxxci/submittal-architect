@@ -42,8 +42,15 @@
 - [2026-03-08] Created Supabase project 'Submittal Architect' and initialized schema.
 - [2026-03-08] Built Keyword Map for semantic discovery and Knowledge Bridge for technical trait extraction.
 - [2026-03-08] Successfully prototyped Platt.com sourcing for 3/4" ground rods.
-- [2026-03-12] Redesigned entire frontend to "The Architect Prism" (Command Center aesthetic).
-- [2026-03-12] Implemented side-by-side Workbench for spec/cutsheet verification.
-- [2026-03-16] Integrated Supabase for real-time data persistence (projects & spec sections).
-- [2026-03-16] Implemented AI Sourcing simulations (Find Cutsheet & Vendor Managed workflows).
-- [2026-03-16] Refined dual-checkbox product completion logic with global visual feedback.
+- [2026-03-27] Redesigned entire frontend to "The Architect Prism" (Command Center aesthetic).
+- [2026-03-27] Implemented side-by-side Workbench for spec/cutsheet verification.
+- [2026-03-27] Integrated Supabase for real-time data persistence (projects & spec sections).
+- [2026-03-27] Implemented AI Sourcing simulations (Find Cutsheet & Vendor Managed workflows).
+- [2026-03-27] Refined dual-checkbox product completion logic with global visual feedback.
+- [2026-03-27] Stabilized Architect Workbench alignment and resolved Lightbox rendering defects.
+- [2026-03-27] Refactored Lightbox to use React Portals for robust full-screen performance.
+- [2026-03-27] Enlarged Lightbox to 98% viewport scale and enforced 100% default PDF zoom.
+- [2026-03-28] Finalized "Clean Consistency" (Prisms) workbench UI with integrated Product Stacks.
+- [2026-03-28] Implemented "Resilient Sourcing" logic: Meta-data (Reasoning/Proof) now always displays even if direct PDF links are missing.
+- [2026-03-28] Resolved critical PDF Preview regressions (State reset on block selection).
+- [2026-03-28] Added "Direct PDF Not Found" fallback UI with Vendor Page deep-linking.
