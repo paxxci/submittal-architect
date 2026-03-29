@@ -54,6 +54,87 @@ app.post('/api/upload', upload.single('pdf'), (req, res) => {
     res.json({ success: true, pdfPath: req.file.path, filename: req.file.originalname });
 });
 
+// Manual Cutsheet/Submittal Upload to Supabase Storage
+app.post('/api/upload-cutsheet', upload.single('pdf'), async (req, res) => {
+    try {
+        const { projectId, sectionId, blockId, type } = req.body;
+        const file = req.file;
+
+        if (!file) throw new Error("No file received.");
+        if (!projectId || !sectionId) throw new Error("Missing projectId or sectionId.");
+
+        console.log(`[API] Processing Manual Upload | Project: ${projectId} | Section: ${sectionId} | Type: ${type}`);
+
+        // 1. Upload to Supabase Storage
+        const fileBuffer = fs.readFileSync(file.path);
+        const fileName = `${projectId}/${sectionId}/${type === 'block' ? blockId : 'full'}_${Date.now()}.pdf`;
+        const bucket = type === 'revision' ? 'revisions' : 'cutsheets';
+
+        const { data: storageData, error: storageError } = await supabase
+            .storage
+            .from(bucket)
+            .upload(fileName, fileBuffer, {
+                contentType: 'application/pdf',
+                upsert: true
+            });
+
+        if (storageError) throw storageError;
+
+        // Get Public URL
+        const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(fileName);
+
+        // 2. Update Database
+        if (type === 'block') {
+            // Update the block's cutsheet_url in the ai_blocks JSON
+            const { data: section } = await supabase
+                .from('spec_sections')
+                .select('ai_blocks, tracker_status')
+                .eq('id', sectionId)
+                .single();
+
+            if (section && section.ai_blocks) {
+                const blocks = typeof section.ai_blocks === 'string' ? JSON.parse(section.ai_blocks) : section.ai_blocks;
+                const updatedBlocks = blocks.map(b => {
+                    const bKey = (b.blockTitle || '').trim().slice(0, 80);
+                    if (bKey === blockId) {
+                        return { ...b, cutsheet_url: publicUrl, status: 'manual_upload' };
+                    }
+                    return b;
+                });
+
+                await supabase
+                    .from('spec_sections')
+                    .update({ 
+                        ai_blocks: JSON.stringify(updatedBlocks),
+                        tracker_status: (section.tracker_status === 'Not Started' || !section.tracker_status) ? 'Working' : section.tracker_status
+                    })
+                    .eq('id', sectionId);
+            }
+        } else if (type === 'section') {
+            // Update the section's full_submittal_url
+            await supabase
+                .from('spec_sections')
+                .update({ 
+                    full_submittal_url: publicUrl,
+                    responsibility: 'VENDOR', // Assumption: if you upload a full submittal, it's vendor-managed or complete
+                    tracker_status: 'Done'
+                })
+                .eq('id', sectionId);
+        } else if (type === 'revision') {
+            // Future: Handle revision history table
+        }
+
+        // Cleanup local file
+        fs.unlinkSync(file.path);
+
+        res.json({ success: true, publicUrl });
+
+    } catch (error) {
+        console.error('[API] Manual Upload Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/shred', async (req, res) => {
     const { projectId, pdfPath } = req.query;
     const jobId = `job_${Date.now()}`;

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from './supabase'
 import ReactDOM from 'react-dom'
+import TrackerView from './TrackerView'
 import './App.css'
 
 const MOCK_PROJECT = {
@@ -77,8 +78,7 @@ const MOCK_PORTFOLIO = [
     }
 ];
 
-// Helper Component to Format Raw Specification Text
-const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey, aiBlocks }) => {
+const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey, aiBlocks, sourcedBlocksData }) => {
     const fileInputRef = useRef(null);
     
     if (!text) return null;
@@ -105,15 +105,15 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
         <div className="spec-formatted-container space-y-4">
             {blocks.map((blockLines, blockIdx) => {
                 const blockId = `${specId}___${partId}___${blockIdx}`;
-                // Extract clean block title key (e.g. "2.05 ELECTRICAL METALLIC TUBING EMT")
                 const blockTitle = blockLines[0]?.trim() || 'GENERAL SECTION';
                 const blockKey = blockTitle.slice(0, 80);
                 const isSelected = selectedBlockKey === blockKey;
-                // Pre-computed AI block data from parse time (if available)
                 const aiBlockData = aiBlocks ? aiBlocks[blockKey] || null : null;
                 const isCompleted = completedBlocks?.includes(blockId);
                 const isNA = naBlocks?.includes(blockId);
                 const isGreen = isCompleted || isNA;
+
+                const blockSourced = sourcedBlocksData ? sourcedBlocksData[blockKey] : null;
                 
                 return (
                 <div 
@@ -130,7 +130,6 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                     onClick={(e) => onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: e.currentTarget.offsetTop })}
                 >
                     <div className="mb-4">
-                            {/* Block Header: Title Row */}
                             <div className="mb-5">
                                 {blockLines.length > 0 && /^[1-3]\.[0-9]{2}/.test(blockLines[0].trim()) ? (
                                     <div className={`indent-level-0 font-extrabold text-2xl uppercase tracking-wide leading-snug ${isGreen ? 'text-accent-secondary' : 'text-accent-primary'}`}>
@@ -143,10 +142,8 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                 )}
                             </div>
                             
-                            {/* Action Row: Buttons & Done Status */}
                             <div className="flex items-center justify-between py-3 mb-4 border-b border-white/10">
                                 <div className="flex items-center gap-4">
-                                    {/* Sourcing Actions */}
                                     <div className="flex items-center gap-3">
                                         <button 
                                             type="button"
@@ -154,7 +151,6 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                                 e.preventDefault();
                                                 e.stopPropagation(); 
                                                 if (!isCompleted) {
-                                                    // Select this block so right column knows which cut sheet to show
                                                     const blockEl = document.getElementById(`prism-block-${blockKey.replace(/[^a-zA-Z0-9]/g, '')}`);
                                                     onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: blockEl ? blockEl.offsetTop : 0 });
                                                     window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
@@ -182,7 +178,6 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                                         detail: { blockId, blockKey, blockTitle, file }
                                                     }));
                                                 }
-                                                // Reset so same file can be chosen again
                                                 e.target.value = '';
                                             }}
                                         />
@@ -202,12 +197,9 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                             <span className="font-bold text-white tracking-widest text-[11px] uppercase whitespace-nowrap">Upload Manual</span>
                                         </button>
                                     </div>
-
-                                    {/* Spacer/Divider if needed */}
                                     <div className="w-[1px] h-8 bg-white/5 mx-1"></div>
                                 </div>
 
-                                {/* COMPLETE BUTTON (Right Aligned in Action Row) */}
                                 <button 
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'DONE'); }}
@@ -221,24 +213,49 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                 </button>
                             </div>
 
-                            {/* Render Body Lines */}
                             <div className="pl-1">
                                 {blockLines.map((line, lineIdx) => {
                                     const trimmed = line.trim();
-                                    
-                                    // Skip the first line if it was already rendered as the CSI Header above
                                     if (lineIdx === 0 && /^[1-3]\.[0-9]{2}/.test(trimmed)) return null;
                                     
                                     let indentClass = "base-text";
-                                    
                                     if (/^[A-Z]\./.test(trimmed)) indentClass = "indent-level-1";
                                     else if (/^[0-9]+\./.test(trimmed)) indentClass = "indent-level-2 mt-1";
                                     else if (/^[a-z]\./.test(trimmed)) indentClass = "indent-level-3";
                                     else if (/^-/.test(trimmed)) indentClass = "indent-level-4";
 
+                                    let isVerified = false;
+                                    let verifiedTooltip = "";
+
+                                    // X-Ray Matcher
+                                    if (blockSourced && Array.isArray(blockSourced)) {
+                                        blockSourced.forEach(prod => {
+                                            if (prod.matchedRequirements) {
+                                                const match = prod.matchedRequirements.find(req => 
+                                                    (req.length > 5 && trimmed.toLowerCase().includes(req.toLowerCase())) || 
+                                                    (trimmed.length > 5 && req.toLowerCase().includes(trimmed.toLowerCase()))
+                                                );
+                                                if (match) {
+                                                    isVerified = true;
+                                                    verifiedTooltip = `Verified in cutsheet: ${prod.sku}`;
+                                                }
+                                            }
+                                        });
+                                    }
+
                                     return (
-                                        <div key={lineIdx} className={indentClass}>
-                                            {trimmed}
+                                        <div key={lineIdx} className={`${indentClass} relative flex group/line`}>
+                                            <div className={`flex-1 transition-all ${isVerified ? 'text-accent-secondary font-bold bg-accent-secondary/5 px-2 py-0.5 rounded -ml-2' : ''}`}>
+                                                {trimmed}
+                                            </div>
+                                            {isVerified && (
+                                                <div 
+                                                    className="absolute -left-7 top-1/2 -translate-y-1/2 opacity-0 group-hover/line:opacity-100 transition-opacity flex items-center gap-2 cursor-help" 
+                                                    title={verifiedTooltip}
+                                                >
+                                                    <CheckCircle2 size={14} className="text-accent-secondary drop-shadow-[0_0_10px_rgba(0,255,163,0.8)]" />
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -315,6 +332,38 @@ function App() {
     const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false)
     const [addSectionData, setAddSectionData] = useState({ sectionNumber: '', title: '', rawText: '' })
     const [addSectionSaving, setAddSectionSaving] = useState(false)
+
+    const handleUpdateProjectAdmin = async (updates) => {
+        if (!activeProject) return;
+        const { error } = await supabase
+            .from('projects')
+            .update(updates)
+            .eq('id', activeProject.id);
+        
+        if (error) {
+            console.error('Error updating project admin:', error);
+            alert('Failed to update project settings');
+        } else {
+            loadProjectData(activeProject, null, true);
+        }
+    };
+
+    const handleUpdateSectionResponsibility = async (sectionDbId, responsibility, vendorName = null) => {
+        const { error } = await supabase
+            .from('spec_sections')
+            .update({ 
+                responsibility, 
+                vendor_name: vendorName 
+            })
+            .eq('id', sectionDbId);
+        
+        if (error) {
+            console.error('Error updating responsibility:', error);
+        } else {
+            loadProjectData(activeProject, null, true);
+        }
+    };
+
 
     // Inline shredder — mirrors backend shredder.js Tier 1 & 2 logic
     const shredSection = (text) => {
@@ -540,7 +589,12 @@ function App() {
                 match: Math.round((s.confidence_score || 0) * 100),
                 pageNumber: s.page_number,
                 coordinates: s.coordinates,
-                metadata: s.metadata || {},
+                metadata: {
+                    ...(s.metadata || {}),
+                    responsibility: s.responsibility || 'SELF',
+                    vendor_name: s.vendor_name || null,
+                    full_submittal_url: s.full_submittal_url || null
+                },
                 aiBlockMap,   // ← pre-computed block map from AI shredder
                 part1: s.part1_content || "No Part 1 content found.",
                 part2: {
@@ -991,9 +1045,11 @@ function App() {
                 .from('spec_sections')
                 .update({ 
                     metadata: { 
-                        completedBlocks: newCompleted.filter(id => id.startsWith(specId)),
-                        naBlocks: newNA.filter(id => id.startsWith(specId))
-                    } 
+                        ...(section.metadata || {}),
+                        completed_blocks: newCompleted.filter(id => id.startsWith(specId)),
+                        na_blocks: newNA.filter(id => id.startsWith(specId))
+                    },
+                    ...((!section.tracker_status || section.tracker_status === 'Not Started') ? { tracker_status: 'Working' } : {})
                 })
                 .eq('id', section.dbId);
         }
@@ -1011,36 +1067,57 @@ function App() {
     // Live Sourcing Logic
     useEffect(() => {
         const handleTriggerManualUpload = async (e) => {
-            const { blockId, blockKey, blockTitle, file } = e.detail;
+            const { blockId, blockKey, blockTitle, file, isFullSection, sectionDbId, sectionTitle } = e.detail;
             const section = selectedSpec;
             if (!section) return;
 
-            console.log('Manual upload for:', blockTitle || blockId, file.name);
-            setActiveSourcingBlockId(section.id);
+            console.log('Manual upload for:', isFullSection ? 'Full Section' : (blockTitle || blockId), file.name);
+            if (!isFullSection) {
+                setActiveSourcingBlockId(section.id);
+            }
             setSourcingProgressPct(20);
 
             try {
-                // 1. Upload to Supabase Storage
-                const fileName = `${section.id}/${blockKey || 'manual'}-${Date.now()}.pdf`;
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('cutsheets')
-                    .upload(fileName, file, { upsert: true });
+                // 1. Prepare Form Data for backend
+                const formData = new FormData();
+                formData.append('pdf', file);
+                formData.append('projectId', activeProject.id);
+                formData.append('sectionId', isFullSection ? sectionDbId : (section.dbId || section.id));
+                formData.append('blockId', isFullSection ? sectionTitle : (blockKey || blockTitle || blockId));
+                formData.append('type', isFullSection ? 'section' : 'block');
 
-                if (uploadError) throw uploadError;
-
-                const { data: { publicUrl } } = supabase.storage
-                    .from('cutsheets')
-                    .getPublicUrl(fileName);
+                // 2. Call backend endpoint
+                const res = await fetch('http://localhost:3001/api/upload-cutsheet', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error);
 
                 setSourcingProgressPct(70);
 
-                // 2. Format as a "sourced result" for the UI
+                if (isFullSection) {
+                    // Update the section root level
+                    setSelectedSpec(prev => ({
+                        ...prev,
+                        metadata: {
+                            ...prev?.metadata,
+                            full_submittal_url: data.publicUrl,
+                            responsibility: 'VENDOR'
+                        }
+                    }));
+                    setPdfUrl(data.publicUrl);
+                    alert("Full Vendor Submittal Uploaded successfully!");
+                    return;
+                }
+
+                // 3. Format result for state (block level)
                 const result = {
                     sku: file.name.replace('.pdf', ''),
                     vendor: 'Manual Upload',
                     title: blockTitle || 'Manually Uploaded Document',
-                    cutsheetUrl: publicUrl,
-                    pdpUrl: null,
+                    cutsheetUrl: data.publicUrl,
                     complianceScore: 1.0,
                     complianceReason: "User manually verified and uploaded this document for compliance.",
                     matchedRequirements: []
@@ -1049,7 +1126,7 @@ function App() {
                 const activeBlockKey = blockKey || blockTitle || blockId;
                 const results = [result];
 
-                // 3. Update State
+                // 4. Update UI State
                 setSelectedSpec(prev => ({
                     ...prev,
                     metadata: {
@@ -1062,25 +1139,10 @@ function App() {
                 }));
 
                 setActiveSubProductIndex(0);
-
-                // 4. Persist to DB
-                const currentMeta = section.metadata || {};
-                await supabase
-                    .from('spec_sections')
-                    .update({ 
-                        metadata: {
-                            ...currentMeta,
-                            sourcedBlocks: {
-                                ...(currentMeta.sourcedBlocks || {}),
-                                [activeBlockKey]: results
-                            }
-                        }
-                    })
-                    .eq('id', section.dbId);
-
                 setSourcingProgressPct(100);
+
             } catch (err) {
-                console.error("Manual upload failed:", err);
+                console.error("Manual upload check failed:", err);
                 alert(`Upload Failed: ${err.message}`);
             } finally {
                 setTimeout(() => setActiveSourcingBlockId(null), 800);
@@ -1157,7 +1219,8 @@ function App() {
                                     ...(currentMeta.sourcedBlocks || {}),
                                     [activeBlockKey]: results
                                 }
-                            }
+                            },
+                            ...((!section.tracker_status || section.tracker_status === 'Not Started') ? { tracker_status: 'Working' } : {})
                         })
                         .eq('id', section.dbId)
                         .then(() => {
@@ -1334,7 +1397,148 @@ function App() {
         </div>
     )
 
-    const renderDashboard = () => {
+    const renderAdmin = () => {
+        if (!activeProject) return null;
+
+        return (
+            <div className="admin-container animate-fade-in p-8 max-w-6xl mx-auto">
+                <div className="flex justify-between items-end mb-10">
+                    <div>
+                        <h1 className="text-4xl font-black tracking-tight mb-2">PROJECT <span className="text-accent-primary underline decoration-4 underline-offset-8">ADMIN</span></h1>
+                        <p className="text-text-muted font-medium uppercase tracking-[0.2em] text-xs">Manage Responsibilities, Vendors & Project Staff</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <button className="btn-secondary flex items-center gap-2" onClick={() => setView('dashboard')}>
+                            <LayoutDashboard size={18} /> Dashboard
+                        </button>
+                        <button className="btn-primary flex items-center gap-2" onClick={() => setView('workbench')}>
+                            <FileSearch size={18} /> Open Workbench
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-12 gap-6">
+                    {/* Left Column: Project Metadata */}
+                    <div className="col-span-12 lg:col-span-4 space-y-6">
+                        <div className="prism-card p-6 border-accent-primary/20">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-text-muted mb-6 flex items-center gap-2">
+                                <Users size={16} /> Project Ownership
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-text-muted block mb-1.5 ml-1">Project Manager</label>
+                                    <input 
+                                        type="text"
+                                        className="w-full bg-bg-deep border border-border-subtle rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-accent-primary transition-all outline-none"
+                                        defaultValue={activeProject?.metadata?.manager || 'Michael Paxton'}
+                                        onBlur={(e) => handleUpdateProjectAdmin({ 
+                                            metadata: { ...activeProject.metadata, manager: e.target.value } 
+                                        })}
+                                    />
+                                </div>
+                                <div className="pt-4 border-t border-border-subtle/50">
+                                    <label className="text-[10px] font-black uppercase text-text-muted block mb-3 ml-1">Authorized Vendors</label>
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        {['Platt Electric', 'CED', 'Graybar'].map(v => (
+                                            <div key={v} className="bg-accent-primary/10 text-accent-primary text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-2 border border-accent-primary/20">
+                                                {v} <X size={10} className="hover:text-white cursor-pointer" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="relative">
+                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                        <input 
+                                            placeholder="Add vendor filter..." 
+                                            className="w-full bg-bg-deep border border-border-subtle rounded-xl pl-9 pr-4 py-2.5 text-xs outline-none focus:ring-2 focus:ring-accent-primary transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="prism-card p-6 bg-gradient-to-br from-bg-surface to-bg-deep">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-text-muted mb-4">System Stats</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-bg-deep rounded-xl border border-border-subtle">
+                                    <p className="text-[10px] font-bold text-text-muted uppercase mb-1">Total Blocks</p>
+                                    <p className="text-xl font-black">{projectData?.divisions?.reduce((acc, d) => acc + (d.tasks || 0), 0) || 0}</p>
+                                </div>
+                                <div className="p-4 bg-bg-deep rounded-xl border border-border-subtle">
+                                    <p className="text-[10px] font-bold text-text-muted uppercase mb-1">Sourced</p>
+                                    <p className="text-xl font-black text-green-400">{projectData?.progress || 0}%</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: Bulk Management */}
+                    <div className="col-span-12 lg:col-span-8">
+                        <div className="prism-card p-0 overflow-hidden min-h-[500px] flex flex-col">
+                            <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-bg-deep/40">
+                                <h3 className="text-sm font-bold uppercase tracking-widest text-text-muted">Section Responsibility Master</h3>
+                                <div className="flex gap-2">
+                                    <button className="btn-secondary text-[10px] px-3 py-1.5 font-bold uppercase tracking-wider">Set Selection: SELF</button>
+                                    <button className="btn-secondary text-[10px] px-3 py-1.5 font-bold uppercase tracking-wider">Set Selection: VENDOR</button>
+                                </div>
+                            </div>
+                            
+                            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="sticky top-0 bg-bg-surface z-10 shadow-sm">
+                                        <tr className="border-b border-border-subtle">
+                                            <th className="p-4 w-10"><input type="checkbox" className="rounded bg-bg-deep border-border-subtle" /></th>
+                                            <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Section</th>
+                                            <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Title</th>
+                                            <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest text-center">Resp</th>
+                                            <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Assigned Vendor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border-subtle/30">
+                                        {projectData?.recentItems?.map(section => (
+                                            <tr key={section.id} className="hover:bg-accent-primary/5 transition-colors group">
+                                                <td className="p-4"><input type="checkbox" className="rounded bg-bg-deep border-border-subtle" /></td>
+                                                <td className="py-4 px-2 font-mono text-xs font-bold text-accent-primary">{section.id}</td>
+                                                <td className="py-4 px-2 text-xs font-bold">{section.title}</td>
+                                                <td className="py-4 px-2 text-center">
+                                                    <select 
+                                                        className="bg-bg-deep border border-border-subtle rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white focus:outline-none focus:border-accent-primary"
+                                                        value={section.metadata?.responsibility || 'SELF'}
+                                                        onChange={(e) => handleUpdateSectionResponsibility(section.dbId, e.target.value, section.metadata?.vendor_name)}
+                                                    >
+                                                        <option value="SELF">SELF</option>
+                                                        <option value="VENDOR">VENDOR</option>
+                                                        <option value="NA">N/A</option>
+                                                    </select>
+                                                </td>
+                                                <td className="py-4 px-2 text-xs text-text-muted">
+                                                    {section.metadata?.responsibility === 'VENDOR' ? (
+                                                        <select 
+                                                            className="bg-transparent text-xs font-bold p-1 outline-none text-accent-primary"
+                                                            value={section.metadata?.vendor_name || 'None'}
+                                                            onChange={(e) => handleUpdateSectionResponsibility(section.dbId, 'VENDOR', e.target.value)}
+                                                        >
+                                                            <option value="None">Assign Vendor...</option>
+                                                            <option value="Platt Electric">Platt Electric</option>
+                                                            <option value="Graybar">Graybar</option>
+                                                            <option value="CED">CED</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span className="text-text-muted opacity-50 block p-1">Internal Scope</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderMainContent = () => {
         // Guard: projectData may still be loading — show spinner instead of crashing
         if (!projectData) return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
@@ -1722,7 +1926,7 @@ function App() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
-                        {(sectionResponsibility[selectedSpec?.id] || 'SELF') === 'NA' ? (
+                        {(selectedSpec?.metadata?.responsibility || 'SELF') === 'NA' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center h-full opacity-50 grayscale animate-fade-in">
                                 <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
                                     <ShieldCheck size={48} className="text-text-muted" />
@@ -1731,12 +1935,12 @@ function App() {
                                 <p className="text-text-muted text-sm">This specification section is marked as Not Applicable for this submittal.</p>
                                 <button 
                                     className="btn-secondary mt-6 scale-90"
-                                    onClick={() => setSectionResponsibility({...sectionResponsibility, [selectedSpec?.id]: 'SELF'})}
+                                    onClick={() => handleUpdateSectionResponsibility(selectedSpec.dbId, 'SELF')}
                                 >
                                     Include Section
                                 </button>
                             </div>
-                        ) : (sectionResponsibility[selectedSpec?.id] || 'SELF') === 'VENDOR' ? (
+                        ) : (selectedSpec?.metadata?.responsibility || 'SELF') === 'VENDOR' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center h-full animate-fade-in">
                                 <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg w-full bg-accent-secondary/5 shadow-[0_0_50px_rgba(0,255,163,0.05)]">
                                     <div className="w-16 h-16 bg-accent-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -1744,11 +1948,28 @@ function App() {
                                     </div>
                                     <h4 className="text-2xl font-extrabold pb-2 tracking-tight">Vendor Cut Sheets</h4>
                                     <p className="text-text-muted text-sm leading-relaxed mb-8">
-                                        Drop the manufacturer cut sheets received from the vendor here. 
+                                        Drop the combined manufacturer cut sheet PDF received from the vendor here. 
                                         We will still generate high-premium cover sheets for these items once uploaded.
                                     </p>
                                     <div className="flex gap-4 justify-center">
-                                        <button className="btn-primary px-8" onClick={handleVendorUpload}>Upload Files</button>
+                                        <button className="btn-primary px-8" onClick={() => {
+                                            const input = document.createElement('input');
+                                            input.type = 'file';
+                                            input.accept = '.pdf';
+                                            input.onchange = (e) => {
+                                                if(e.target.files[0]) {
+                                                    window.dispatchEvent(new CustomEvent('trigger-manual-upload', {
+                                                        detail: { 
+                                                            file: e.target.files[0], 
+                                                            isFullSection: true, 
+                                                            sectionDbId: selectedSpec.dbId,
+                                                            sectionTitle: selectedSpec.id 
+                                                        }
+                                                    }));
+                                                }
+                                            };
+                                            input.click();
+                                        }}>Upload Full Submittal</button>
                                         <button className="btn-secondary">Request from Vendor</button>
                                     </div>
                                 </div>
@@ -1766,6 +1987,7 @@ function App() {
                                                     completedBlocks={completedBlocks}
                                                     naBlocks={naBlocks}
                                                     onToggleBlock={toggleBlockCompletion}
+                                                    sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
                                                 />
                                             </div>
                                         )}
@@ -1779,6 +2001,7 @@ function App() {
                                                     completedBlocks={completedBlocks}
                                                     naBlocks={naBlocks}
                                                     onToggleBlock={toggleBlockCompletion}
+                                                    sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
                                                 />
                                             </div>
                                         )}
@@ -1801,6 +2024,7 @@ function App() {
                                                             }}
                                                             selectedBlockKey={selectedBlock?.blockKey}
                                                             aiBlocks={selectedSpec?.aiBlockMap || null}
+                                                            sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
                                                         />
                                                     </div>
                                                 ) : (
@@ -2139,10 +2363,15 @@ function App() {
                         <button className={`rail-btn ${view === 'sourcing-settings' ? 'active' : ''}`} title="Sourcing Settings" onClick={() => setView('sourcing-settings')}>
                             <Search size={20} />
                         </button>
-                        <button className="rail-btn" title="Submittal Output (Coming Soon)" disabled style={{opacity: 0.3}}><ClipboardCheck size={20} /></button>
+                        <button className={`rail-btn ${view === 'admin' ? 'active' : ''}`} title="Project Admin Center" onClick={() => { if(activeProject) setView('admin') }} disabled={!activeProject}>
+                            <ShieldCheck size={20} />
+                        </button>
+                        <button className={`rail-btn ${view === 'tracker' ? 'active' : ''}`} title="Submittal Tracker Master Log" onClick={() => { if(activeProject) setView('tracker') }} disabled={!activeProject}>
+                            <ClipboardCheck size={20} />
+                        </button>
                     </nav>
                     <div className="rail-footer">
-                        <button className="rail-btn" title="Settings (Coming Soon)" disabled style={{opacity: 0.3}}><Settings size={20} /></button>
+                        <button className="rail-btn" title="Help & Guides" onClick={() => window.open('https://docs.submittalarchitect.com')}><Settings size={20} /></button>
                         <div className="user-avatar" title="User Profile"></div>
                     </div>
                 </aside>
@@ -2172,6 +2401,18 @@ function App() {
                         </div>
                     ))}
                     {view === 'sourcing-settings' && renderSourcingSettings()}
+                    {view === 'admin' && renderAdmin()}
+                    {view === 'tracker' && <TrackerView 
+                        projectData={projectData} 
+                        activeProject={activeProject} 
+                        onNavigateToSection={(section) => {
+                            if (section.division_id && projectData?.divisions) {
+                                setSelectedDivision(projectData.divisions.find(d => d.id === section.division_id));
+                            }
+                            setSelectedSpec(section);
+                            setView('workbench');
+                        }} 
+                    />}
                 </main>
             </div>
             
