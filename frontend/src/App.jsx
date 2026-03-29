@@ -4,7 +4,7 @@ import {
     Settings, Bell, Search, ChevronRight, 
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
-    FileText, ExternalLink, Briefcase, Building2, Trash2, Maximize, X,
+    FileText, ExternalLink, Briefcase, Building2, Trash2, Maximize, X, Globe,
     Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone
 } from 'lucide-react'
 import { supabase } from './supabase'
@@ -78,7 +78,19 @@ const MOCK_PORTFOLIO = [
     }
 ];
 
-const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, onToggleBlock, onBlockSelect, selectedBlockKey, aiBlocks, sourcedBlocksData }) => {
+const FormattedSpecText = ({ 
+    text, 
+    specId, 
+    partId, 
+    onToggleBlock, 
+    completedBlocks, 
+    naBlocks, 
+    onBlockSelect, 
+    selectedBlockKey, 
+    aiBlocks,
+    sourcedBlocksData,
+    responsibility = 'SELF'
+}) => {
     const fileInputRef = useRef(null);
     
     if (!text) return null;
@@ -112,6 +124,7 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                 const isCompleted = completedBlocks?.includes(blockId);
                 const isNA = naBlocks?.includes(blockId);
                 const isGreen = isCompleted || isNA;
+                const isReadOnly = responsibility !== 'SELF';
 
                 const blockSourced = sourcedBlocksData ? sourcedBlocksData[blockKey] : null;
                 
@@ -126,7 +139,7 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                         'border-l-transparent hover:border-l-accent-primary/50 hover:border-accent-primary/40'
                     } ${
                         !isGreen && !isSelected ? 'hover:translate-x-1' : ''
-                    } group`}
+                    } ${isReadOnly ? 'saturate-50 opacity-90' : ''} group`}
                     onClick={(e) => onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: e.currentTarget.offsetTop })}
                 >
                     <div className="mb-4">
@@ -142,7 +155,8 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                 )}
                             </div>
                             
-                            <div className="flex items-center justify-between py-3 mb-4 border-b border-white/10">
+                            {!isReadOnly && (
+                                <div className="flex items-center justify-between py-3 mb-4 border-b border-white/10">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-3">
                                         <button 
@@ -212,7 +226,8 @@ const FormattedSpecText = ({ text, specId, partId, completedBlocks, naBlocks, on
                                     </span>
                                 </button>
                             </div>
-
+                            )}
+                            
                             <div className="pl-1">
                                 {blockLines.map((line, lineIdx) => {
                                     const trimmed = line.trim();
@@ -298,12 +313,15 @@ class ErrorBoundary extends React.Component {
 
 function App() {
     const [view, setView] = useState('portfolio') // portfolio, dashboard, workbench, settings
-    const [projectManagers, setProjectManagers] = useState([])
+    const [projectManagers, setProjectManagers] = useState([]);
+    const [editingPMId, setEditingPMId] = useState(null);
+    const [editingPMData, setEditingPMData] = useState({ name: '', email: '', phone: '' });
     const [companyTemplates, setCompanyTemplates] = useState([])
     const [activeProject, setActiveProject] = useState(null)
     const [selectedDivision, setSelectedDivision] = useState(null)
     const [projectData, setProjectData] = useState(null)
     const [portfolio, setPortfolio] = useState([]) // Real projects from Supabase
+    const [isPortfolioLoading, setIsPortfolioLoading] = useState(true) // Tracks initial fetch state
     const [selectedSpec, setSelectedSpec] = useState(null)
     const [selectedPart, setSelectedPart] = useState('part2') // part1, part2, part3
     const [completedBlocks, setCompletedBlocks] = useState([]) // Array of block IDs like "260533-part2-1"
@@ -327,6 +345,7 @@ function App() {
     const [vendors, setVendors] = useState(['Platt', 'Hubbell', 'North Coast'])
     const [authorizedVendors, setAuthorizedVendors] = useState(['Platt Electric', 'CED', 'Graybar'])
     const [manufacturers, setManufacturers] = useState(['Hubbell', 'Leviton', 'Eaton'])
+    const [preferredWebsites, setPreferredWebsites] = useState(['hubbell.com', 'platt.com', 'graybar.com'])
     const [activeSubProductIndex, setActiveSubProductIndex] = useState(0) // Tracks which item in a multi-product stack is visible
     const [adminTab, setAdminTab] = useState('responsibility') // responsibility, sourcing
 
@@ -365,7 +384,8 @@ function App() {
             mergedMetadata.sourcing_prefs = {
                 vendors,
                 authorizedVendors,
-                manufacturers
+                manufacturers,
+                preferred_websites: preferredWebsites
             };
         }
 
@@ -389,18 +409,40 @@ function App() {
     };
 
     const handleUpdateSectionResponsibility = async (sectionDbId, responsibility, vendorName = null) => {
-        const { error } = await supabase
-            .from('spec_sections')
-            .update({ 
-                responsibility, 
-                vendor_name: vendorName 
-            })
-            .eq('id', sectionDbId);
-        
-        if (error) {
-            console.error('Error updating responsibility:', error);
-        } else {
-            loadProjectData(activeProject, null, true);
+        // 1. Optimistic Local State Update for Workbench Sync
+        setSectionResponsibility(prev => ({
+            ...prev,
+            [sectionDbId]: responsibility // Using dbId as the primary key for the map now for better stability
+        }));
+
+        setProjectData(prev => {
+            if (!prev) return prev;
+            const updatedItems = (prev.recentItems || []).map(item => 
+                item.dbId === sectionDbId ? { ...item, responsibility, assigned_to: vendorName } : item
+            );
+            return { ...prev, recentItems: updatedItems };
+        });
+
+        // 2. Database Update
+        try {
+            const { error } = await supabase
+                .from('spec_sections')
+                .update({ 
+                    responsibility, 
+                    vendor_name: vendorName 
+                })
+                .eq('id', sectionDbId);
+            
+            if (error) {
+                console.error('Error updating responsibility in DB:', error);
+                // Standard UI notification if needed, but we stay optimistic
+            }
+            
+            // 3. Background Re-Sync (Ensures everything is consistent)
+            // Note: We don't block the UI on this
+            /* loadProjectData(activeProject, null, true); */
+        } catch (err) {
+            console.error('Fatal Exception during responsibility update:', err);
         }
     };
 
@@ -478,10 +520,15 @@ function App() {
                 title: addSectionData.title,
                 type: 'Spec',
                 match: 100,
-                part1: shred.part1,
-                part2: { extractedSpecs: [], insight: 'Manually added section.', rawText: shred.part2 },
-                part3: shred.part3,
-                metadata: { responsibility: 'SELF' }
+                part1: part1,
+                part2: part2,
+                part3: part3,
+                metadata: {
+                    part1: part1,
+                    part2: part2,
+                    part3: part3,
+                    responsibility: 'SELF'
+                }
             };
 
             setProjectData(prev => {
@@ -533,6 +580,17 @@ function App() {
             
             if (templates) setCompanyTemplates(templates);
             if (tError) console.error('Error fetching templates:', tError);
+
+            // 4. Fetch Company Info
+            const { data: info, error: iError } = await supabase
+                .from('company_info')
+                .select('*')
+                .eq('id', '00000000-0000-0000-0000-000000000000')
+                .single();
+            
+            if (info) setCompanyInfo(info);
+            if (iError && iError.code !== 'PGRST116') console.error('Error fetching company info:', iError);
+            setIsPortfolioLoading(false);
         }
         fetchGlobalAndPortfolio();
     }, []);
@@ -1263,7 +1321,9 @@ function App() {
             }, 1000);
             
             try {
-                const prefs = JSON.stringify({ vendors, brands: manufacturers });
+                // Include user-defined search preferences from project metadata
+                const preferredWebsites = activeProject?.metadata?.preferred_websites || [];
+                const prefs = JSON.stringify({ vendors, brands: manufacturers, preferredWebsites });
                 const params = new URLSearchParams({
                     query: fallbackQuery,
                     sectionTitle: blockTitle || section.title,
@@ -1451,11 +1511,16 @@ function App() {
         if (error) console.error('Error deleting PM:', error);
     };
 
-    // Company Admin: Info Handlers
-    const handleUpdateCompanyInfo = (updates) => {
-        setCompanyInfo(prev => ({ ...prev, ...updates }));
-        // Perspective: In production, this would sync to a 'company_info' table in Supabase
-        console.log("Updating Company Info:", updates);
+    // Company Info: Info Handlers
+    const handleUpdateCompanyInfo = async (updates) => {
+        const newInfo = { ...companyInfo, ...updates, id: '00000000-0000-0000-0000-000000000000' };
+        setCompanyInfo(newInfo);
+        
+        const { error } = await supabase
+            .from('company_info')
+            .upsert(newInfo);
+            
+        if (error) console.error("Error saving company info:", error);
     };
 
     // Company HQ: Template Handlers
@@ -1481,7 +1546,13 @@ function App() {
                 </button>
             </div>
 
-            {portfolio.length === 0 ? (
+            {isPortfolioLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1,2,3].map(i => (
+                        <div key={i} className="prism-card animate-pulse h-48 border-white/5 bg-white/[0.02]"></div>
+                    ))}
+                </div>
+            ) : portfolio.length === 0 ? (
                 <div className="prism-card text-center py-16">
                     <Building2 size={48} className="text-text-muted mx-auto mb-4" />
                     <h3 className="text-xl font-bold mb-2">No Projects Yet</h3>
@@ -1530,14 +1601,14 @@ function App() {
 
     const renderCompanyAdmin = () => {
         return (
-            <div className="hq-root animate-fade-in p-8 max-w-7xl mx-auto">
-                <div className="flex justify-between items-end mb-10 border-b border-white/5 pb-8">
+            <div className="admin-container animate-fade-in p-12 max-w-7xl mx-auto pb-32">
+                <div className="flex justify-between items-end mb-12 border-b border-white/5 pb-12">
                     <div>
                         <div className="h-12 w-12 bg-accent-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-accent-primary/30">
-                            <Settings size={28} className="text-accent-primary animate-spin-slow" />
+                            <Building2 size={28} className="text-accent-primary" />
                         </div>
-                        <h1 className="text-4xl font-black tracking-tighter mb-2 italic">COMPANY ADMIN</h1>
-                        <p className="text-text-muted font-medium text-lg">Manage global administrative assets, team directory, and branding.</p>
+                        <h1 className="text-4xl font-black tracking-tighter mb-2 italic">COMPANY INFO</h1>
+                        <p className="text-text-muted font-medium text-lg">Centralize your organization's global identity, team directory, and submittal standards.</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="px-5 py-2.5 bg-white/5 rounded-full border border-white/10 flex items-center gap-3">
@@ -1547,16 +1618,16 @@ function App() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
                     {/* Left Column: Team & Info */}
-                    <div className="col-span-12 lg:col-span-7 space-y-8">
+                    <div className="lg:col-span-7 space-y-8">
                         {/* Company Info Card */}
                         <div className="prism-card p-8 border-white/5 bg-bg-surface/30">
                             <h3 className="text-lg font-black uppercase tracking-[0.2em] text-text-muted mb-8 flex items-center gap-3">
                                 <span className="p-1.5 bg-white/5 rounded-lg"><Building2 size={16} /></span> Company Information
                             </h3>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="col-span-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="md:col-span-2">
                                     <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Company Name</label>
                                     <input 
                                         type="text" className="prism-input w-full" 
@@ -1564,7 +1635,7 @@ function App() {
                                         onChange={(e) => handleUpdateCompanyInfo({ name: e.target.value })}
                                     />
                                 </div>
-                                <div className="col-span-2">
+                                <div className="md:col-span-2">
                                     <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Street Address</label>
                                     <input 
                                         type="text" className="prism-input w-full" 
@@ -1638,36 +1709,46 @@ function App() {
                                     </button>
                                 </div>
 
-                                <div className="space-y-4">
+                                <div className="space-y-6">
                                     {isAddingPM && (
-                                        <div className="p-6 bg-accent-primary/5 border border-accent-primary/30 rounded-2xl animate-fade-in mb-6">
-                                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Full Name" 
-                                                    className="prism-input" 
-                                                    value={newPM.name}
-                                                    onChange={(e) => setNewPM({...newPM, name: e.target.value})}
-                                                />
-                                                <input 
-                                                    type="email" 
-                                                    placeholder="Email Address" 
-                                                    className="prism-input" 
-                                                    value={newPM.email}
-                                                    onChange={(e) => setNewPM({...newPM, email: e.target.value})}
-                                                />
-                                                <input 
-                                                    type="tel" 
-                                                    placeholder="Phone Number" 
-                                                    className="prism-input" 
-                                                    value={newPM.phone}
-                                                    onChange={(e) => setNewPM({...newPM, phone: e.target.value})}
-                                                />
+                                        <div className="p-8 bg-accent-primary/5 border border-accent-primary/20 rounded-3xl animate-fade-in-down shadow-2xl backdrop-blur-md">
+                                            <h4 className="text-xs font-black uppercase tracking-[0.3em] text-accent-primary mb-6">Register New Project Manager</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Full Legal Name</label>
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="e.g. Michael Scott" 
+                                                        className="prism-input w-full !bg-bg-deep/50" 
+                                                        value={newPM.name}
+                                                        onChange={(e) => setNewPM({...newPM, name: e.target.value})}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Corporate Email</label>
+                                                    <input 
+                                                        type="email" 
+                                                        placeholder="name@company.com" 
+                                                        className="prism-input w-full !bg-bg-deep/50" 
+                                                        value={newPM.email}
+                                                        onChange={(e) => setNewPM({...newPM, email: e.target.value})}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2 md:col-span-2">
+                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Direct Phone Line</label>
+                                                    <input 
+                                                        type="tel" 
+                                                        placeholder="(555) 000-0000" 
+                                                        className="prism-input w-full !bg-bg-deep/50" 
+                                                        value={newPM.phone}
+                                                        onChange={(e) => setNewPM({...newPM, phone: e.target.value})}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="flex justify-end gap-3">
-                                                <button className="text-text-muted font-bold text-sm px-4 py-2 hover:text-white" onClick={() => setIsAddingPM(false)}>Cancel</button>
+                                            <div className="flex justify-end gap-4 border-t border-white/5 pt-6">
+                                                <button className="text-text-muted font-black uppercase text-[10px] tracking-widest px-6 py-3 hover:text-white transition-colors" onClick={() => setIsAddingPM(false)}>Discard</button>
                                                 <button 
-                                                    className="btn-primary !py-2 !px-6 text-sm"
+                                                    className="btn-primary !py-3 !px-10 text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(255,107,0,0.2)]"
                                                     disabled={!newPM.name}
                                                     onClick={async () => {
                                                         await handleAddProjectManager(newPM);
@@ -1675,41 +1756,130 @@ function App() {
                                                         setIsAddingPM(false);
                                                     }}
                                                 >
-                                                    Save PM
+                                                    Confirm Registration
                                                 </button>
                                             </div>
                                         </div>
                                     )}
 
                                     {projectManagers.length === 0 ? (
-                                        <div className="py-12 text-center bg-white/2 rounded-2xl border border-dashed border-white/10">
-                                            <p className="text-text-muted font-medium">No project managers registered. Add your first team member to enable project assignments.</p>
+                                        <div className="py-20 text-center bg-white/[0.02] rounded-3xl border border-dashed border-white/10">
+                                            <Users size={40} className="mx-auto text-white/10 mb-4" />
+                                            <p className="text-text-muted font-bold text-sm tracking-tight px-12 leading-relaxed">No project managers registered in the company cloud. <br/>Add your first team member to enable automated assignments.</p>
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-1 gap-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {projectManagers.map(pm => (
-                                                <div key={pm.id} className="flex items-center justify-between p-5 bg-bg-deep/60 border border-white/5 rounded-2xl hover:border-accent-primary/30 transition-all group">
-                                                    <div className="flex items-center gap-5">
-                                                        <div className="w-12 h-12 rounded-xl bg-accent-primary/10 flex items-center justify-center font-black text-accent-primary text-xl border border-accent-primary/20">
-                                                            {pm.name.charAt(0)}
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-bold text-lg tracking-tight group-hover:text-accent-primary transition-colors">{pm.name}</div>
-                                                            <div className="flex items-center gap-3 text-xs text-text-muted mt-1">
-                                                                <span className="flex items-center gap-1"><Mail size={12} className="text-accent-primary/50" /> {pm.email}</span>
-                                                                <span className="w-1 h-1 bg-white/10 rounded-full"></span>
-                                                                <span className="flex items-center gap-1"><Phone size={12} className="text-accent-primary/50" /> {pm.phone}</span>
+                                                <div key={pm.id} className="group relative p-6 bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.03] rounded-3xl hover:border-accent-primary/40 transition-all duration-500 shadow-xl overflow-hidden">
+                                                    <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity duration-1000 grayscale group-hover:grayscale-0">
+                                                        <Users size={120} />
+                                                    </div>
+                                                    
+                                                    <div className="relative z-10 flex flex-col gap-5">
+                                                        {editingPMId === pm.id ? (
+                                                            <div className="space-y-4 animate-fade-in">
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Full Name</label>
+                                                                    <input 
+                                                                        autoFocus
+                                                                        type="text" 
+                                                                        className="prism-input w-full !py-2 !text-sm" 
+                                                                        value={editingPMData.name}
+                                                                        onChange={(e) => setEditingPMData({...editingPMData, name: e.target.value})}
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Email</label>
+                                                                    <input 
+                                                                        type="email" 
+                                                                        className="prism-input w-full !py-2 !text-sm" 
+                                                                        value={editingPMData.email}
+                                                                        onChange={(e) => setEditingPMData({...editingPMData, email: e.target.value})}
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Phone</label>
+                                                                    <input 
+                                                                        type="tel" 
+                                                                        className="prism-input w-full !py-2 !text-sm" 
+                                                                        value={editingPMData.phone}
+                                                                        onChange={(e) => setEditingPMData({...editingPMData, phone: e.target.value})}
+                                                                    />
+                                                                </div>
+                                                                <div className="flex gap-2 pt-2">
+                                                                    <button 
+                                                                        className="btn-primary !py-2 !px-4 !text-[10px] flex-1"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleUpdateProjectManager(pm.id, editingPMData);
+                                                                            setEditingPMId(null);
+                                                                        }}
+                                                                    >
+                                                                        Save Changes
+                                                                    </button>
+                                                                    <button 
+                                                                        className="btn-secondary !py-2 !px-4 !text-[10px]"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setEditingPMId(null);
+                                                                        }}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        ) : (
+                                                            <>
+                                                                <div className="flex items-start justify-between cursor-pointer" onClick={() => {
+                                                                    setEditingPMId(pm.id);
+                                                                    setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
+                                                                }}>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-accent-primary/20 to-accent-primary/5 flex items-center justify-center font-black text-accent-primary text-2xl border border-accent-primary/20 shadow-inner group-hover:scale-110 transition-transform duration-500">
+                                                                            {pm.name.charAt(0)}
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="font-black text-xl tracking-tight group-hover:text-white transition-colors leading-none mb-1">{pm.name}</div>
+                                                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-accent-primary/80">Project Manager</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all transform translate-y-1 group-hover:translate-y-0 duration-300">
+                                                                        <button className="p-2 hover:bg-white/5 rounded-xl text-text-muted hover:text-white transition-colors" onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setEditingPMId(pm.id);
+                                                                            setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
+                                                                        }}>
+                                                                            <Mail size={16} />
+                                                                        </button>
+                                                                        <button 
+                                                                            className="p-2 hover:bg-red-500/10 rounded-xl text-text-muted hover:text-red-400 transition-colors"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteProjectManager(pm.id);
+                                                                            }}
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="space-y-3 pt-2 cursor-pointer" onClick={() => {
+                                                                    setEditingPMId(pm.id);
+                                                                    setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
+                                                                }}>
+                                                                    <div className="flex items-center gap-3 p-3 bg-black/20 rounded-2xl border border-white/[0.02]">
+                                                                        <div className="p-1.5 bg-white/5 rounded-lg text-accent-primary/60"><Mail size={12} /></div>
+                                                                        <span className="text-xs font-bold tracking-tight text-white/90 truncate">{pm.email}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3 p-3 bg-black/20 rounded-2xl border border-white/[0.02]">
+                                                                        <div className="p-1.5 bg-white/5 rounded-lg text-accent-primary/60"><Phone size={12} /></div>
+                                                                        <span className="text-xs font-bold tracking-tight text-white/90">{pm.phone}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button 
-                                                            className="p-2.5 hover:bg-white/5 rounded-xl text-text-muted hover:text-white"
-                                                            onClick={() => handleDeleteProjectManager(pm.id)}
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </div>
+                                                    <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-accent-primary/0 to-transparent group-hover:via-accent-primary/40 transition-all duration-1000"></div>
                                                 </div>
                                             ))}
                                         </div>
@@ -1720,7 +1890,7 @@ function App() {
                     </div>
 
                     {/* Right Column: Templates & Security */}
-                    <div className="col-span-12 lg:col-span-5 space-y-8">
+                    <div className="lg:col-span-5 space-y-8">
                         <div className="prism-card p-1 relative overflow-hidden group border-accent-secondary/10">
                             <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none scale-150 rotate-12 group-hover:rotate-0 transition-transform duration-1000">
                                 <FileText size={180} />
@@ -1783,7 +1953,7 @@ function App() {
                             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-4 flex items-center gap-3">
                                 <Clock size={14} /> Security & Integrity
                             </h4>
-                            <p className="text-[11px] text-text-muted leading-relaxed italic">Changes to Company Admin are logged and immutable. Ensure team members are verified before granting administrative access.</p>
+                            <p className="text-[11px] text-text-muted leading-relaxed italic">Changes to Company Info are logged and immutable. Ensure team members are verified before granting administrative access.</p>
                         </div>
                     </div>
                 </div>
@@ -1795,17 +1965,22 @@ function App() {
         if (!activeProject) return null;
 
         return (
-            <div className="admin-container animate-fade-in p-8 max-w-6xl mx-auto">
-                <div className="flex justify-between items-end mb-10">
+            <div className="admin-container animate-fade-in p-12 max-w-7xl mx-auto pb-32">
+                <div className="flex justify-between items-end mb-12 border-b border-white/5 pb-10">
                     <div>
-                        <h1 className="text-4xl font-black tracking-tight mb-2">PROJECT <span className="text-accent-primary underline decoration-4 underline-offset-8">ADMIN</span></h1>
-                        <p className="text-text-muted font-medium uppercase tracking-[0.2em] text-xs">Manage Responsibilities, Vendors & Sourcing Logic</p>
+                        <div className="h-12 w-12 bg-accent-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-accent-primary/30">
+                            <ShieldCheck size={28} className="text-accent-primary" />
+                        </div>
+                        <h1 className="text-4xl font-black tracking-tighter mb-2 italic uppercase">
+                            PROJECT <span className="text-accent-primary underline decoration-8 underline-offset-8">ADMIN</span>
+                        </h1>
+                        <p className="text-text-muted font-medium text-lg">Manage project-specific responsibilities, sourcing preferences, and vendor logic.</p>
                     </div>
-                    <div className="flex gap-4">
-                        <button className="btn-secondary flex items-center gap-2" onClick={() => setView('dashboard')}>
+                    <div className="flex gap-4 mb-2">
+                        <button className="btn-secondary !py-3 !px-6 flex items-center gap-2 border border-white/10" onClick={() => setView('dashboard')}>
                             <LayoutDashboard size={18} /> Dashboard
                         </button>
-                        <button className="btn-primary flex items-center gap-2" onClick={() => setView('workbench')}>
+                        <button className="btn-primary !py-3 !px-8 flex items-center gap-2 shadow-[0_0_20px_rgba(255,107,0,0.2)]" onClick={() => setView('workbench')}>
                             <FileSearch size={18} /> Open Workbench
                         </button>
                     </div>
@@ -1857,6 +2032,7 @@ function App() {
                                     <p className="text-[9px] text-text-muted font-bold uppercase tracking-widest mt-2 ml-1 italic opacity-60">Reassigning updates all cover pages</p>
                                 </div>
                             </div>
+                        </div>
                                       {/* Card 2: Vendors on the Job (Standalone Block) */}
                         <div className="prism-card p-6 relative overflow-hidden bg-bg-surface/50 border-accent-secondary/10 shadow-2xl">
                             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -1920,9 +2096,68 @@ function App() {
                                 </div>
                             </div>
                         </div>
-           </div>
+                        <div className="divider opacity-0 h-4"></div>
 
-                        {/* Card 3: System Stats */}
+                        {/* Card 3: AI Document Sourcing (Preferred Websites) */}
+                        <div className="prism-card p-6 border-accent-primary/20 bg-bg-surface/50 shadow-lg relative overflow-hidden group">
+                            <div className="absolute -top-4 -right-4 w-24 h-24 bg-accent-primary/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-1000"></div>
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-6 flex items-center gap-2">
+                                <Search size={14} className="text-accent-primary" /> AI Search Preferences
+                            </h3>
+                            <div className="space-y-4 relative z-10">
+                                <p className="text-[11px] text-text-muted mb-6 leading-relaxed italic">The AI prioritizes these domains when searching for manufacturer cut sheets for this project.</p>
+                                
+                                <div className="space-y-2 mb-6">
+                                    {preferredWebsites.map((site, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl group/site hover:border-accent-primary/30 transition-all font-bold text-xs">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(255,107,0,0.5)]"></div>
+                                                <span className="tracking-tight text-white/90">{site}</span>
+                                            </div>
+                                            <button 
+                                                className="text-text-muted hover:text-red-400 p-1 opacity-0 group-hover/site:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                    const newList = preferredWebsites.filter((_, i) => i !== idx);
+                                                    setPreferredWebsites(newList);
+                                                    handleUpdateProjectAdmin({ 
+                                                        metadata: { 
+                                                            ...activeProject.metadata,
+                                                            preferred_websites: newList 
+                                                        } 
+                                                    });
+                                                }}
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="relative">
+                                    <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-accent-primary/60" />
+                                    <input 
+                                        placeholder="Add search domain (e.g. nvent.com)..." 
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-xs font-bold outline-none focus:border-accent-primary/50 transition-all"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.target.value) {
+                                                const newList = [...preferredWebsites, e.target.value];
+                                                setPreferredWebsites(newList);
+                                                handleUpdateProjectAdmin({ 
+                                                    metadata: { 
+                                                        ...activeProject.metadata,
+                                                        preferred_websites: newList 
+                                                    } 
+                                                });
+                                                e.target.value = '';
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+
+                        {/* Card 4: System Stats */}
                         <div className="prism-card p-6 bg-gradient-to-br from-bg-surface to-bg-deep border-border-subtle/50 shadow-lg">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-4 flex items-center gap-2">
                                 <Zap size={14} /> System Stats
@@ -2370,14 +2605,26 @@ function App() {
                         <Plus size={14} /> Add Missing Section
                     </button>
                     {(projectData?.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
-                        const p1Progress = calculatePartProgress(item, 'part1');
-                        const p2Progress = calculatePartProgress(item, 'part2');
-                        const p3Progress = calculatePartProgress(item, 'part3');
+                        const responsibility = sectionResponsibility[item.dbId] || sectionResponsibility[item.id] || item.metadata?.responsibility || 'SELF';
+                        const isSelf = responsibility === 'SELF';
+                        const isNA = responsibility === 'NA';
+                        const isVendor = responsibility === 'VENDOR';
+                        const assignedTo = item.assigned_to || item.metadata?.assigned_to;
+
+                        // Calculate progress for this section
+                        const sectionBlocks = item.metadata?.aiBlockMap || {};
+                        const sourcedCount = Object.keys(item.metadata?.sourcedBlocks || {}).length;
+                        const totalBlocks = Object.keys(sectionBlocks).length || 1;
                         
+                        // Fallback/Placeholder progress until we have granular block tracking
+                        const p1Progress = item.part1 ? 100 : 0;
+                        const p2Progress = Math.min(100, Math.round((sourcedCount / totalBlocks) * 100)) || (item.part2 ? 0 : 0);
+                        const p3Progress = item.part3 ? 100 : 0;
+
                         return (
                         <div 
                             key={item.id} 
-                            className={`item-card prism-card cursor-pointer transition-all ${selectedSpec?.id === item.id ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`item-card prism-card cursor-pointer transition-all ${selectedSpec?.id === item.id ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'} ${!isSelf ? 'grayscale opacity-60' : ''}`}
                             onClick={() => { setSelectedSpec(item); setSelectedBlock(null); }}
                         >
                             <div className="flex justify-between items-start mb-2">
@@ -2405,21 +2652,10 @@ function App() {
                                 </div>
 
                                 <div className="mt-4 pt-3 border-t border-white/5">
-                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest block mb-1.5 px-0.5">Source / Responsibility</label>
-                                    <select 
-                                        className="w-full bg-bg-deep border border-border-subtle rounded-md px-2 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-accent-primary outline-none cursor-pointer transition-all hover:border-accent-primary/30 appearance-none"
-                                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em' }}
-                                        value={sectionResponsibility[item.id] || 'SELF'}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={(e) => {
-                                            e.stopPropagation();
-                                            setSectionResponsibility({...sectionResponsibility, [item.id]: e.target.value});
-                                        }}
-                                    >
-                                        <option value="SELF">Self-Perform</option>
-                                        <option value="VENDOR">Vendor-Managed</option>
-                                        <option value="NA">Not Applicable (Exclude)</option>
-                                    </select>
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest block mb-1.5 px-0.5">Assigned To</label>
+                                    <div className={`w-full bg-black/40 border border-white/5 rounded-md px-3 py-2 text-[10px] font-black tracking-widest uppercase ${!isSelf ? 'text-accent-primary' : 'text-text-muted'}`}>
+                                        {isNA ? 'Not Applicable' : isVendor ? (assignedTo || 'Vendor-Managed') : 'Self-Perform'}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2433,8 +2669,16 @@ function App() {
                         <div className="flex flex-col gap-2">
                             <h3 className="text-2xl font-bold">{selectedSpec?.id.slice(0,2)} {selectedSpec?.id.slice(2,4)} {selectedSpec?.id.slice(4)} - {selectedSpec?.title}</h3>
                         </div>
-                        <div className="flex gap-2">
-                            <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
+                        <div className="flex gap-2 items-center">
+                            {(() => {
+                                const resp = sectionResponsibility[selectedSpec.id] || selectedSpec.metadata?.responsibility || 'SELF';
+                                const assignedTo = selectedSpec.assigned_to || selectedSpec.metadata?.assigned_to;
+                                if (resp === 'NA') return <span className="badge bg-red-500/10 text-red-400 border-red-500/20 uppercase tracking-widest text-[10px] font-black px-3 py-1">Not Applicable</span>;
+                                if (resp === 'VENDOR') return <span className="badge badge-orange uppercase tracking-widest text-[10px] font-black px-3 py-1">Vendor: {assignedTo || 'Assigned'}</span>;
+
+                                return <span className="badge badge-green uppercase tracking-widest text-[10px] font-black px-3 py-1">Self-Perform</span>;
+                            })()}
+                            <span className="badge badge-blue"><ShieldCheck size={12} className="inline mr-1" /> Verified Spec</span>
                         </div>
                     </div>
                     <div className="flex flex-row flex-nowrap gap-3 mb-6 font-mono">
@@ -2460,61 +2704,10 @@ function App() {
                             <h4 className="font-bold text-[10px] uppercase opacity-70">PART 3</h4>
                             <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Execution</span>
                         </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
-                        {(selectedSpec?.metadata?.responsibility || 'SELF') === 'NA' ? (
-                            <div className="col-span-2 flex flex-col items-center justify-center h-full opacity-50 grayscale animate-fade-in">
-                                <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
-                                    <ShieldCheck size={48} className="text-text-muted" />
-                                </div>
-                                <h4 className="text-xl font-bold">Section Excluded</h4>
-                                <p className="text-text-muted text-sm">This specification section is marked as Not Applicable for this submittal.</p>
-                                <button 
-                                    className="btn-secondary mt-6 scale-90"
-                                    onClick={() => handleUpdateSectionResponsibility(selectedSpec.dbId, 'SELF')}
-                                >
-                                    Include Section
-                                </button>
-                            </div>
-                        ) : (selectedSpec?.metadata?.responsibility || 'SELF') === 'VENDOR' ? (
-                            <div className="col-span-2 flex flex-col items-center justify-center h-full animate-fade-in">
-                                <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg w-full bg-accent-secondary/5 shadow-[0_0_50px_rgba(0,255,163,0.05)]">
-                                    <div className="w-16 h-16 bg-accent-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                                        <FileText size={32} className="text-accent-secondary" />
-                                    </div>
-                                    <h4 className="text-2xl font-extrabold pb-2 tracking-tight">Vendor Cut Sheets</h4>
-                                    <p className="text-text-muted text-sm leading-relaxed mb-8">
-                                        Drop the combined manufacturer cut sheet PDF received from the vendor here. 
-                                        We will still generate high-premium cover sheets for these items once uploaded.
-                                    </p>
-                                    <div className="flex gap-4 justify-center">
-                                        <button className="btn-primary px-8" onClick={() => {
-                                            const input = document.createElement('input');
-                                            input.type = 'file';
-                                            input.accept = '.pdf';
-                                            input.onchange = (e) => {
-                                                if(e.target.files[0]) {
-                                                    window.dispatchEvent(new CustomEvent('trigger-manual-upload', {
-                                                        detail: { 
-                                                            file: e.target.files[0], 
-                                                            isFullSection: true, 
-                                                            sectionDbId: selectedSpec.dbId,
-                                                            sectionTitle: selectedSpec.id 
-                                                        }
-                                                    }));
-                                                }
-                                            };
-                                            input.click();
-                                        }}>Upload Full Submittal</button>
-                                        <button className="btn-secondary">Request from Vendor</button>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="col-span-2 grid grid-cols-2 gap-8 h-full">
+                        <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
+                            <div className="flex-1 grid grid-cols-2 gap-8 h-full">
                                 <div className="flex flex-col h-full overflow-hidden">
-                                    <div className="flex-1 pb-[80vh] overflow-y-auto custom-scrollbar">
+                                     <div className="flex-1 pb-[80vh] overflow-y-auto custom-scrollbar">
                                         {selectedPart === 'part1' && (
                                             <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
                                                 <FormattedSpecText
@@ -2525,6 +2718,7 @@ function App() {
                                                     naBlocks={naBlocks}
                                                     onToggleBlock={toggleBlockCompletion}
                                                     sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
+                                                    responsibility={sectionResponsibility[selectedSpec.id] || selectedSpec.metadata?.responsibility || 'SELF'}
                                                 />
                                             </div>
                                         )}
@@ -2539,6 +2733,7 @@ function App() {
                                                     naBlocks={naBlocks}
                                                     onToggleBlock={toggleBlockCompletion}
                                                     sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
+                                                    responsibility={sectionResponsibility[selectedSpec.id] || selectedSpec.metadata?.responsibility || 'SELF'}
                                                 />
                                             </div>
                                         )}
@@ -2562,6 +2757,7 @@ function App() {
                                                             selectedBlockKey={selectedBlock?.blockKey}
                                                             aiBlocks={selectedSpec?.aiBlockMap || null}
                                                             sourcedBlocksData={selectedSpec?.metadata?.sourcedBlocks}
+                                                            responsibility={sectionResponsibility[selectedSpec.id] || selectedSpec.metadata?.responsibility || 'SELF'}
                                                         />
                                                     </div>
                                                 ) : (
@@ -2621,8 +2817,13 @@ function App() {
                                                                     {compPct}% {compLabel}
                                                                 </span>
                                                                 <span className="text-[10px] uppercase font-black tracking-widest text-text-muted opacity-50">
-                                                                    {currentItem.vendor || "Verified Source"}
+                                                                    {currentItem.vendor?.replace(' (Preferred)', '') || "Verified Source"}
                                                                 </span>
+                                                                {currentItem.vendor?.includes('(Preferred)') && (
+                                                                    <span className="px-1.5 py-0.5 rounded bg-accent-secondary/20 text-accent-secondary text-[8px] font-black uppercase tracking-widest border border-accent-secondary/30">
+                                                                        Preferred Site
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             <h3 className="text-lg font-extrabold text-white tracking-tight uppercase leading-tight">
                                                                 {selectedBlock?.blockTitle || "Product Review"}
@@ -2657,9 +2858,29 @@ function App() {
                                                         </div>
                                                     )}
 
-                                                    {/* Simplified Architect Reasoning */}
+                                                    {/* Simplified Architect Reasoning & Source Badge */}
                                                     <div className="architect-reasoning-block">
-                                                        <div className="label">Architect Reasoning</div>
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <div className="label">Architect Reasoning</div>
+                                                            {currentItem.complianceReason && currentItem.complianceReason.includes('Preferred') && (
+                                                                <div className="px-1.5 py-0.5 rounded-full bg-accent-secondary/10 border border-accent-secondary/30 text-accent-secondary text-[7px] font-black uppercase tracking-wider flex items-center gap-1">
+                                                                    <div className="w-1 h-1 rounded-full bg-accent-secondary animate-pulse"></div>
+                                                                    Preferred Vendor
+                                                                </div>
+                                                            )}
+                                                            {currentItem.complianceReason && currentItem.complianceReason.includes('Manufacturer') && (
+                                                                <div className="px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[7px] font-black uppercase tracking-wider flex items-center gap-1">
+                                                                    <div className="w-1 h-1 rounded-full bg-blue-400 animate-pulse"></div>
+                                                                    Direct Manufacturer
+                                                                </div>
+                                                            )}
+                                                            {currentItem.complianceReason && currentItem.complianceReason.includes('Global') && (
+                                                                <div className="px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-text-muted text-[7px] font-black uppercase tracking-wider flex items-center gap-1">
+                                                                    <div className="w-1 h-1 rounded-full bg-white/20 animate-pulse"></div>
+                                                                    Global Discovery
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                         <p className="text-[11px] text-text-muted leading-relaxed font-medium italic">
                                                             "{currentItem.complianceReason || "This product matches the base requirements for this section."}"
                                                         </p>
@@ -2724,7 +2945,7 @@ function App() {
                                     })()}
                                 </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
                 ) : (
@@ -2893,30 +3114,35 @@ function App() {
                             <span className="rail-label">All Projects</span>
                         </button>
 
-                        <button className={`rail-btn ${view === 'dashboard' ? 'active' : ''}`} onClick={() => { if(activeProject) setView('dashboard') }} disabled={!activeProject}>
-                            <LayoutDashboard size={20} />
-                            <span className="rail-label">Dashboard</span>
-                        </button>
+                        {/* ACTIVE PROJECT WORKFLOW */}
+                        <div className="mb-4 mt-6">
+                            <h4 className="text-[10px] font-black uppercase text-text-muted tracking-[0.2em] px-3 mb-4 opacity-50">Workflow</h4>
+                            <button className={`rail-btn mb-2 ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+                                <LayoutDashboard size={20} />
+                                <span className="rail-label">Dashboard</span>
+                            </button>
+                            <button className={`rail-btn mb-2 ${view === 'workbench' ? 'active' : ''}`} onClick={() => setView('workbench')}>
+                                <FileSearch size={20} />
+                                <span className="rail-label">AI Workbench</span>
+                            </button>
+                            <button className={`rail-btn mb-2 ${view === 'tracker' ? 'active' : ''}`} onClick={() => setView('tracker')}>
+                                <Zap size={20} />
+                                <span className="rail-label">Master Tracker</span>
+                            </button>
+                        </div>
 
-                        <button className={`rail-btn ${view === 'workbench' ? 'active' : ''}`} onClick={() => { if(selectedDivision) setView('workbench') }} disabled={!selectedDivision}>
-                            <FileSearch size={20} />
-                            <span className="rail-label">AI Workbench</span>
-                        </button>
-
-                        <button className={`rail-btn ${view === 'tracker' ? 'active' : ''}`} onClick={() => { if(activeProject) setView('tracker') }} disabled={!activeProject}>
-                            <ClipboardCheck size={20} />
-                            <span className="rail-label">Master Tracker</span>
-                        </button>
-
-                        <button className={`rail-btn ${view === 'admin' ? 'active' : ''}`} onClick={() => { if(activeProject) setView('admin') }} disabled={!activeProject}>
-                            <ShieldCheck size={20} />
-                            <span className="rail-label">Project Admin</span>
-                        </button>
-
-                        <button className={`rail-btn ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
-                            <Settings size={20} />
-                            <span className="rail-label">Company Admin</span>
-                        </button>
+                        {/* ADMINISTRATION & SETTINGS */}
+                        <div className="mt-auto pt-8 border-t border-white/5">
+                            <h4 className="text-[10px] font-black uppercase text-text-muted tracking-[0.2em] px-3 mb-4 opacity-50">Admin</h4>
+                            <button className={`rail-btn mb-2 ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
+                                <ShieldCheck size={20} />
+                                <span className="rail-label">Project Admin</span>
+                            </button>
+                            <button className={`rail-btn mb-2 ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
+                                <Building2 size={20} />
+                                <span className="rail-label">Company Info</span>
+                            </button>
+                        </div>
                     </nav>
                     <div className="rail-footer">
                         <button className="rail-btn" onClick={() => window.open('https://docs.submittalarchitect.com')}>
@@ -2963,6 +3189,8 @@ function App() {
                     {view === 'tracker' && <TrackerView 
                         projectData={projectData} 
                         activeProject={activeProject} 
+                        onUpdateSection={handleUpdateSectionResponsibility}
+                        onRefreshData={() => loadProjectData(activeProject, null, true)}
                         onNavigateToSection={(section) => {
                             if (section.division_id && projectData?.divisions) {
                                 setSelectedDivision(projectData.divisions.find(d => d.id === section.division_id));

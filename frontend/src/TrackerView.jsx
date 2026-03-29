@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { CheckCircle2, AlertCircle, FileText, ChevronRight } from 'lucide-react';
 
-const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
+const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdateSection, onRefreshData }) => {
     const [sections, setSections] = useState([]);
     const [editingNotes, setEditingNotes] = useState(null);
     const [tempNotes, setTempNotes] = useState("");
@@ -62,20 +62,34 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
         return progressPercent;
     };
 
-    const handleUpdateField = async (id, field, value) => {
-        // Optimistic UI update
-        setSections(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s));
+    const handleUpdateField = async (dbId, field, value) => {
+        // Optimistic UI update - lookup by dbId
+        setSections(prev => prev.map(s => s.dbId === dbId ? { ...s, [field]: value } : s));
 
         try {
-            const { error } = await supabase
-                .from('spec_sections')
-                .update({ [field]: value })
-                .eq('id', id);
+            // Special handling for responsibility to trigger App-level state sync
+            if (field === 'responsibility' || field === 'assigned_to') {
+                const section = sections.find(s => s.dbId === dbId);
+                if (field === 'responsibility') {
+                    await onUpdateSection(dbId, value, value === 'VENDOR' ? (section.assigned_to || null) : null);
+                } else {
+                    await onUpdateSection(dbId, 'VENDOR', value);
+                }
+            } else {
+                const { error } = await supabase
+                    .from('spec_sections')
+                    .update({ [field]: value })
+                    .eq('id', dbId);
 
-            if (error) {
-                console.error("Error updating tracker field:", error);
-                alert("Failed to save changes.");
+                if (error) {
+                    console.error("Error updating tracker field:", error);
+                    alert("Failed to save changes.");
+                }
             }
+            
+            // Re-sync global state
+            if (onRefreshData) onRefreshData();
+            
         } catch (err) {
             console.error("Exception updating tracker field:", err);
         }
@@ -123,7 +137,7 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
                             const rawTitle = titleObj ? titleObj[2] : section.title;
 
                             return (
-                                <tr key={section.id} className="hover:bg-white/[0.02] transition-colors group">
+                                <tr key={section.dbId} className="hover:bg-white/[0.02] transition-colors group">
                                     
                                     {/* Spec Section & Description */}
                                     <td className="p-4 align-top">
@@ -138,21 +152,40 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
                                         </div>
                                     </td>
 
-                                    {/* Assigned To (Unified) */}
-                                    <td className="p-4 align-top">
-                                        <input 
-                                            type="text"
-                                            className="w-full bg-transparent border-b border-white/10 focus:border-accent-primary outline-none px-1 py-1 text-sm transition-colors cursor-text"
-                                            placeholder="Assignee Name"
-                                            value={section.assigned_to || ''}
-                                            onChange={(e) => {
-                                                setSections(prev => prev.map(s => s.id === section.id ? { ...s, assigned_to: e.target.value } : s));
-                                            }}
-                                            onBlur={(e) => handleUpdateField(section.id, 'assigned_to', e.target.value)}
-                                        />
-                                        {section.responsibility === 'VENDOR' && (
-                                            <div className="text-[10px] text-accent-primary mt-1 uppercase tracking-widest font-bold">Vendor: {section.vendor_name || 'Unassigned'}</div>
-                                        )}
+                                    {/* Assigned To Column with Tiered Selection */}
+                                    <td className="p-4 align-top min-w-[160px]">
+                                        <div className="flex flex-col gap-2">
+                                            {/* Primary Type Selection */}
+                                            <select 
+                                                className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-white focus:outline-none focus:border-accent-primary"
+                                                value={section.responsibility || 'SELF'}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    handleUpdateField(section.dbId, 'responsibility', val);
+                                                    if (val === 'SELF' || val === 'NA') {
+                                                        handleUpdateField(section.dbId, 'assigned_to', null);
+                                                    }
+                                                }}
+                                            >
+                                                <option value="SELF" className="bg-[#111216]">Self-Perform</option>
+                                                <option value="VENDOR" className="bg-[#111216]">Vendor-Managed</option>
+                                                <option value="NA" className="bg-[#111216]">Not Applicable</option>
+                                            </select>
+
+                                            {/* Secondary Vendor Selection (Only if VENDOR is selected) */}
+                                            {section.responsibility === 'VENDOR' && (
+                                                <select 
+                                                    className="w-full bg-accent-primary/10 border border-accent-primary/20 rounded px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-accent-primary focus:outline-none"
+                                                    value={section.assigned_to || ''}
+                                                    onChange={(e) => handleUpdateField(section.dbId, 'assigned_to', e.target.value)}
+                                                >
+                                                    <option value="" className="bg-[#111216]">Choose Vendor...</option>
+                                                    {(activeProject?.metadata?.sourcing_prefs?.authorizedVendors || []).map(vendor => (
+                                                        <option key={vendor} value={vendor} className="bg-[#111216]">{vendor}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
                                     </td>
 
                                     {/* Progress Bar */}
@@ -174,7 +207,7 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
                                     <td className="p-4 align-top">
                                         <select 
                                             value={section.tracker_status || 'Not Started'}
-                                            onChange={(e) => handleUpdateField(section.id, 'tracker_status', e.target.value)}
+                                            onChange={(e) => handleUpdateField(section.dbId, 'tracker_status', e.target.value)}
                                             className={`appearance-none text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-full outline-none cursor-pointer transition-colors ${getStatusColor(section.tracker_status || 'Not Started')}`}
                                             autoFocus={false}
                                         >
@@ -187,12 +220,12 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
 
                                     {/* Inline Notes */}
                                     <td className="p-4 align-top group/notes relative cursor-text" onClick={() => {
-                                        if (editingNotes !== section.id) {
-                                            setEditingNotes(section.id);
+                                        if (editingNotes !== section.dbId) {
+                                            setEditingNotes(section.dbId);
                                             setTempNotes(section.tracker_notes || '');
                                         }
                                     }}>
-                                        {editingNotes === section.id ? (
+                                        {editingNotes === section.dbId ? (
                                             <div className="relative">
                                                 <textarea 
                                                     autoFocus
@@ -200,7 +233,7 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection }) => {
                                                     value={tempNotes}
                                                     onChange={(e) => setTempNotes(e.target.value)}
                                                     onBlur={() => {
-                                                        handleUpdateField(section.id, 'tracker_notes', tempNotes);
+                                                        handleUpdateField(section.dbId, 'tracker_notes', tempNotes);
                                                         setEditingNotes(null);
                                                     }}
                                                 />
