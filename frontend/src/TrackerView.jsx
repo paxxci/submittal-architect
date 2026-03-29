@@ -1,84 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { supabase } from './supabase';
 import { CheckCircle2, AlertCircle, FileText, ChevronRight } from 'lucide-react';
 
 const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdateSection, onRefreshData }) => {
-    const [sections, setSections] = useState([]);
+    const sortedSections = useMemo(() => {
+        if (!projectData || !projectData.recentItems) return [];
+        return [...projectData.recentItems].sort((a, b) => {
+            const aNum = a.id.match(/^[0-9.]+/)?.[0] || a.id;
+            const bNum = b.id.match(/^[0-9.]+/)?.[0] || b.id;
+            return aNum.localeCompare(bNum, undefined, { numeric: true });
+        });
+    }, [projectData]);
+
     const [editingNotes, setEditingNotes] = useState(null);
     const [tempNotes, setTempNotes] = useState("");
 
-    // Initialize data from projectData (which holds the current loaded state)
-    useEffect(() => {
-        if (projectData && projectData.recentItems) {
-            // Sort by numerical spec section
-            const sortedItems = [...projectData.recentItems].sort((a, b) => {
-                const aNum = a.title.match(/^[0-9.]+/)?.[0] || a.title;
-                const bNum = b.title.match(/^[0-9.]+/)?.[0] || b.title;
-                return aNum.localeCompare(bNum, undefined, { numeric: true });
-            });
-            setSections(sortedItems);
-        }
-    }, [projectData]);
-
     const calculateSectionProgress = (section) => {
-        if (!section || !section.aiBlockMap) return 0;
-        
-        const aiBlocks = Object.keys(section.aiBlockMap);
-        if (aiBlocks.length === 0) return 0;
-
-        let completedValuesCount = 0;
-        aiBlocks.forEach(blockKey => {
-            const blockContent = section.aiBlockMap[blockKey];
-            if (blockContent?.keyRequirements) {
-                const requirements = typeof blockContent.keyRequirements === 'string'
-                    ? JSON.parse(blockContent.keyRequirements)
-                    : blockContent.keyRequirements;
-                
-                if (requirements && Array.isArray(requirements)) {
-                    const hasVerified = requirements.some(req => 
-                        req.verified === true || 
-                        (req.value && req.value.toLowerCase().includes('verified'))
-                    );
-                    if (hasVerified) completedValuesCount++;
-                }
-            } else if (section.metadata?.sourcedBlocks && section.metadata.sourcedBlocks[blockKey]) {
-                // If there are sourced blocks for this key, count it as completed
-                completedValuesCount++;
-            }
-        });
-
-        // Use sourcedBlocks length as an alternative metric if AI requirements are empty
-        const sourcedBlocksCount = section.metadata?.sourcedBlocks ? Object.keys(section.metadata.sourcedBlocks).length : 0;
-        const finalCount = Math.max(completedValuesCount, sourcedBlocksCount);
-
-        const progressPercent = Math.min(100, Math.round((finalCount / aiBlocks.length) * 100));
-        
-        // Return 100% if manually marked DONE via completed_blocks (App level tracking)
-        const completedBlocksTracker = section.metadata?.completed_blocks || [];
-        if (completedBlocksTracker.length > 0 && progressPercent === 0) {
-           return Math.min(100, Math.round((completedBlocksTracker.length / aiBlocks.length) * 100));
-        }
-
-        return progressPercent;
+        let progress = 0;
+        if (section.tracker_status === 'Done') return 100;
+        if (section.tracker_status === 'Working') progress += 50;
+        if (section.tracker_notes && section.tracker_notes.length > 10) progress += 50;
+        return Math.min(progress, 100);
     };
 
     const handleUpdateField = async (dbId, field, value) => {
-        // Optimistic UI update - lookup by dbId
-        setSections(prev => prev.map(s => s.dbId === dbId ? { ...s, [field]: value } : s));
-
         try {
-            // Special handling for responsibility to trigger App-level state sync
             if (field === 'responsibility' || field === 'assigned_to') {
-                const section = sections.find(s => s.dbId === dbId);
-                if (field === 'responsibility') {
-                    await onUpdateSection(dbId, value, value === 'VENDOR' ? (section.assigned_to || null) : null);
-                } else {
-                    await onUpdateSection(dbId, 'VENDOR', value);
-                }
+                const section = sortedSections.find(s => s.dbId === dbId);
+                const newResponsibility = field === 'responsibility' ? value : (section?.responsibility || 'SELF');
+                const newVendor = field === 'assigned_to' ? value : (newResponsibility === 'VENDOR' ? (section?.assigned_to || null) : null);
+                
+                await onUpdateSection(dbId, newResponsibility, newVendor);
             } else {
                 const { error } = await supabase
                     .from('spec_sections')
-                    .update({ [field]: value })
+                    .update({ [field === 'tracker_status' ? 'tracker_status' : 'tracker_notes']: value })
                     .eq('id', dbId);
 
                 if (error) {
@@ -87,7 +43,6 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
                 }
             }
             
-            // Re-sync global state
             if (onRefreshData) onRefreshData();
             
         } catch (err) {
@@ -125,37 +80,26 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                        {sections.map(section => {
+                        {sortedSections.map(section => {
                             const progress = section.responsibility === 'VENDOR' && section.full_submittal_url ? 100 : calculateSectionProgress(section);
                             
-                            // Determine Unified Assignee
-                            let assignee = section.assigned_to || '';
-                            if (section.responsibility === 'VENDOR') assignee = section.vendor_name || 'Vendor';
-
-                            const titleObj = section.title.match(/^([0-9.]+\s+[-]\s+)?(.*)$/);
-                            const rawSpecNum = section.title.match(/^[0-9.]+/)?.[0] || "General";
-                            const rawTitle = titleObj ? titleObj[2] : section.title;
-
                             return (
                                 <tr key={section.dbId} className="hover:bg-white/[0.02] transition-colors group">
                                     
-                                    {/* Spec Section & Description */}
                                     <td className="p-4 align-top">
                                         <div 
                                             className="font-bold text-accent-primary cursor-pointer hover:underline flex items-center gap-1"
                                             onClick={() => onNavigateToSection(section)}
                                         >
-                                            {rawSpecNum}
+                                            {section.id}
                                         </div>
                                         <div className="text-xs text-text-muted mt-1 leading-relaxed pr-4">
-                                            {rawTitle}
+                                            {section.title}
                                         </div>
                                     </td>
 
-                                    {/* Assigned To Column with Tiered Selection */}
                                     <td className="p-4 align-top min-w-[160px]">
                                         <div className="flex flex-col gap-2">
-                                            {/* Primary Type Selection */}
                                             <select 
                                                 className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-white focus:outline-none focus:border-accent-primary"
                                                 value={section.responsibility || 'SELF'}

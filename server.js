@@ -269,7 +269,9 @@ app.get('/api/source', async (req, res) => {
     const CONFIDENCE_MIN = 0.6;
 
     try {
-        const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'] };
+        const preferences = prefs ? JSON.parse(prefs) : { vendors: ['Platt'], brands: ['Hubbell'], preferredWebsites: [] };
+        const preferredWebsites = preferences.preferredWebsites || [];
+        console.log(`[Preferences] Vendors: ${preferences.vendors}, Websites: ${preferredWebsites}`);
 
         // ── STEP 1: Get block info — use pre-computed data if available, else call AI ──
         let productTasks = [];
@@ -298,48 +300,47 @@ app.get('/api/source', async (req, res) => {
         const engine = new SourcingEngine();
         const finalResults = [];
 
+        // ── Tier 2: Global Fallback Domains (Safety Net for vague specs) ──
+        const GLOBAL_FALLBACK_DOMAINS = ['graybar.com', 'rexelusa.com', 'elliottelectric.com', 'cesco.com'];
+
         // ── STEP 2: Process each identified product task ──
         for (const task of productTasks) {
             console.log(`\n[Sourcing Task] "${task.productType}" | Query: "${task.searchQuery}"`);
             let selectedResult = null;
             let complianceScore = null;
 
-            // Tier 1: Platt
-            const plattCandidates = await engine.getPlattCandidates(task.searchQuery);
-            if (plattCandidates.length > 0) {
-                complianceScore = await ai.selectBestProduct(plattCandidates, task.productType, task.keyRequirements, task.manufacturers);
-                if (complianceScore && complianceScore.confidence >= CONFIDENCE_MIN) {
-                    const winner = plattCandidates[complianceScore.selectedIndex];
-                    const pdp = await engine.getPlattPDP(winner.href, task.searchQuery);
-                    if (pdp?.cutsheetUrl) selectedResult = pdp;
+            // ── Tier 0: Custom Preferred Domains (User's specific vendors) ──
+            if (preferredWebsites.length > 0) {
+                const customResult = await engine.sourceFromCustomDomains(preferredWebsites, task.searchQuery);
+                if (customResult && customResult.cutsheetUrl) {
+                    selectedResult = customResult;
+                    complianceScore = { confidence: 0.90, reason: `Verified on Preferred Site: ${customResult.vendorShort}`, matchedRequirements: [] };
+                    console.log(`[Tier 0] Match found on preferred site: ${customResult.vendorShort}`);
                 }
             }
 
-            // Tier 2: North Coast
-            if (!selectedResult) {
-                const ncCandidates = await engine.getNorthCoastCandidates(task.searchQuery);
-                if (ncCandidates.length > 0) {
-                    const ncScore = await ai.selectBestProduct(ncCandidates, task.productType, task.keyRequirements, task.manufacturers);
-                    if (ncScore && ncScore.confidence >= CONFIDENCE_MIN) {
-                        const winner = ncCandidates[ncScore.selectedIndex];
-                        const pdp = await engine.getNorthCoastPDP(winner.href);
-                        if (pdp?.cutsheetUrl) {
-                            selectedResult = pdp;
-                            complianceScore = ncScore;
-                        }
-                    }
-                }
-            }
-
-            // Tier 3: Manufacturer Direct
+            // ── Tier 1: Manufacturer Direct (From Spec) ──
             if (!selectedResult && task.manufacturers?.length > 0) {
                 for (const brand of task.manufacturers) {
                     const mfgResult = await engine.sourceFromManufacturerDirect(brand, task.searchQuery);
                     if (mfgResult?.cutsheetUrl) {
                         selectedResult = mfgResult;
-                        complianceScore = complianceScore || { confidence: 0.65, reason: `Direct from ${brand}`, matchedRequirements: [] };
+                        complianceScore = complianceScore || { confidence: 0.85, reason: `Direct Manufacturer Match: ${brand}`, matchedRequirements: [] };
+                        console.log(`[Tier 1] Match found on manufacturer site: ${brand}`);
                         break;
                     }
+                }
+            }
+
+            // ── Tier 2: Global Fallback (Verified Industrial Domains) ──
+            // Only trigger if Tier 0/1 failed and we have high confidence this is a product
+            if (!selectedResult) {
+                console.log(`[Tier 2] PIVOT: No match on Preferred or Manufacturer. Triggering Global Fallback...`);
+                const globalResult = await engine.sourceFromCustomDomains(GLOBAL_FALLBACK_DOMAINS, task.searchQuery);
+                if (globalResult && globalResult.cutsheetUrl) {
+                    selectedResult = globalResult;
+                    complianceScore = { confidence: 0.70, reason: `Found via Global Industrial Domain: ${globalResult.vendorShort}`, matchedRequirements: [] };
+                    console.log(`[Tier 2] Match found on global domain: ${globalResult.vendorShort}`);
                 }
             }
 

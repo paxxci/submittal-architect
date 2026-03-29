@@ -412,7 +412,7 @@ function App() {
         // 1. Optimistic Local State Update for Workbench Sync
         setSectionResponsibility(prev => ({
             ...prev,
-            [sectionDbId]: responsibility // Using dbId as the primary key for the map now for better stability
+            [sectionDbId]: responsibility
         }));
 
         setProjectData(prev => {
@@ -425,7 +425,7 @@ function App() {
 
         // 2. Database Update
         try {
-            const { error } = await supabase
+            await supabase
                 .from('spec_sections')
                 .update({ 
                     responsibility, 
@@ -433,14 +433,7 @@ function App() {
                 })
                 .eq('id', sectionDbId);
             
-            if (error) {
-                console.error('Error updating responsibility in DB:', error);
-                // Standard UI notification if needed, but we stay optimistic
-            }
-            
-            // 3. Background Re-Sync (Ensures everything is consistent)
-            // Note: We don't block the UI on this
-            /* loadProjectData(activeProject, null, true); */
+            // Note: We don't block the UI on background syncs anymore to prevent 'snapping back'
         } catch (err) {
             console.error('Fatal Exception during responsibility update:', err);
         }
@@ -1569,7 +1562,6 @@ function App() {
                             className="prism-card hover:border-accent-primary/50 cursor-pointer transition-all hover:translate-y-[-2px]"
                             onClick={() => {
                                 setActiveProject(proj);
-                                // Don't null-out projectData first — keep old state visible while loading
                                 loadProjectData(proj, null);
                                 setView('dashboard');
                             }}
@@ -1607,353 +1599,90 @@ function App() {
                         <div className="h-12 w-12 bg-accent-primary/20 rounded-2xl flex items-center justify-center mb-4 border border-accent-primary/30">
                             <Building2 size={28} className="text-accent-primary" />
                         </div>
-                        <h1 className="text-4xl font-black tracking-tighter mb-2 italic">COMPANY INFO</h1>
-                        <p className="text-text-muted font-medium text-lg">Centralize your organization's global identity, team directory, and submittal standards.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="px-5 py-2.5 bg-white/5 rounded-full border border-white/10 flex items-center gap-3">
-                            <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
-                            <span className="text-xs font-black uppercase tracking-widest text-text-muted">Enterprise Cloud Active</span>
-                        </div>
+                        <h1 className="text-4xl font-black tracking-tighter mb-2 italic uppercase">COMPANY <span className="text-accent-primary underline decoration-8 underline-offset-8">INFO</span></h1>
+                        <p className="text-text-muted font-medium text-lg">Centralize your organization's global identity and team standards.</p>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
-                    {/* Left Column: Team & Info */}
-                    <div className="lg:col-span-7 space-y-8">
-                        {/* Company Info Card */}
-                        <div className="prism-card p-8 border-white/5 bg-bg-surface/30">
-                            <h3 className="text-lg font-black uppercase tracking-[0.2em] text-text-muted mb-8 flex items-center gap-3">
-                                <span className="p-1.5 bg-white/5 rounded-lg"><Building2 size={16} /></span> Company Information
+                <div className="grid grid-cols-12 gap-8">
+                    <div className="col-span-12 lg:col-span-7 space-y-8">
+                        <div className="prism-card p-8 border-white/5 bg-bg-surface/30 shadow-2xl">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-accent-primary mb-8 flex items-center gap-3">
+                                <Building2 size={14} /> Corporate Identity
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="md:col-span-2">
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Company Name</label>
-                                    <input 
-                                        type="text" className="prism-input w-full" 
-                                        value={companyInfo.name} 
-                                        onChange={(e) => handleUpdateCompanyInfo({ name: e.target.value })}
-                                    />
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="col-span-2">
+                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Company Name</label>
+                                    <input type="text" className="prism-input w-full" value={companyInfo.name} onChange={(e) => handleUpdateCompanyInfo({ name: e.target.value })} />
                                 </div>
-                                <div className="md:col-span-2">
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Street Address</label>
-                                    <input 
-                                        type="text" className="prism-input w-full" 
-                                        value={companyInfo.address} 
-                                        onChange={(e) => handleUpdateCompanyInfo({ address: e.target.value })}
-                                    />
+                                <div className="col-span-2">
+                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Office Address</label>
+                                    <input type="text" className="prism-input w-full" value={companyInfo.address} onChange={(e) => handleUpdateCompanyInfo({ address: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">City</label>
-                                    <input 
-                                        type="text" className="prism-input w-full" 
-                                        value={companyInfo.city} 
-                                        onChange={(e) => handleUpdateCompanyInfo({ city: e.target.value })}
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">State</label>
-                                        <input 
-                                            type="text" className="prism-input w-full" 
-                                            value={companyInfo.state} 
-                                            onChange={(e) => handleUpdateCompanyInfo({ state: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Zip</label>
-                                        <input 
-                                            type="text" className="prism-input w-full" 
-                                            value={companyInfo.zip} 
-                                            onChange={(e) => handleUpdateCompanyInfo({ zip: e.target.value })}
-                                        />
-                                    </div>
+                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Contact Email</label>
+                                    <input type="text" className="prism-input w-full" value={companyInfo.email} onChange={(e) => handleUpdateCompanyInfo({ email: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Office Phone</label>
-                                    <input 
-                                        type="text" className="prism-input w-full" 
-                                        value={companyInfo.phone} 
-                                        onChange={(e) => handleUpdateCompanyInfo({ phone: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Website</label>
-                                    <input 
-                                        type="text" className="prism-input w-full" 
-                                        value={companyInfo.website} 
-                                        onChange={(e) => handleUpdateCompanyInfo({ website: e.target.value })}
-                                    />
+                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Phone</label>
+                                    <input type="text" className="prism-input w-full" value={companyInfo.phone} onChange={(e) => handleUpdateCompanyInfo({ phone: e.target.value })} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* Team Directory Card */}
-                        <div className="prism-card p-1 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none -rotate-12 group-hover:rotate-0 transition-transform duration-700">
-                                <Users size={180} />
-                            </div>
-                            <div className="p-8 relative z-10">
+                        <div className="prism-card p-1 overflow-hidden group border-accent-secondary/10 shadow-2xl">
+                            <div className="p-8">
                                 <div className="flex justify-between items-center mb-8">
-                                    <h3 className="text-2xl font-black flex items-center gap-4">
-                                        <div className="p-2.5 bg-accent-primary/20 rounded-xl">
-                                            <Users size={24} className="text-accent-primary" />
-                                        </div>
+                                    <h3 className="text-xl font-black flex items-center gap-4 uppercase italic">
                                         Team Directory
                                     </h3>
-                                    <button 
-                                        onClick={() => setIsAddingPM(true)}
-                                        className="btn-primary !text-xs !py-3 !px-6"
-                                    >
-                                        <Plus size={16} className="mr-2" /> Add Project Manager
+                                    <button onClick={() => setIsAddingPM(true)} className="btn-primary !text-[10px] !py-2.5 !px-5 uppercase tracking-widest font-black">
+                                        <Plus size={14} className="mr-2" /> Add Manager
                                     </button>
                                 </div>
 
-                                <div className="space-y-6">
-                                    {isAddingPM && (
-                                        <div className="p-8 bg-accent-primary/5 border border-accent-primary/20 rounded-3xl animate-fade-in-down shadow-2xl backdrop-blur-md">
-                                            <h4 className="text-xs font-black uppercase tracking-[0.3em] text-accent-primary mb-6">Register New Project Manager</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Full Legal Name</label>
-                                                    <input 
-                                                        type="text" 
-                                                        placeholder="e.g. Michael Scott" 
-                                                        className="prism-input w-full !bg-bg-deep/50" 
-                                                        value={newPM.name}
-                                                        onChange={(e) => setNewPM({...newPM, name: e.target.value})}
-                                                    />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {projectManagers.map(pm => (
+                                        <div key={pm.id} className="p-5 bg-white/[0.03] border border-white/5 rounded-2xl hover:border-accent-primary/40 transition-all group">
+                                            <div className="flex items-center gap-4 mb-4">
+                                                <div className="w-10 h-10 rounded-xl bg-accent-primary/20 flex items-center justify-center font-black text-accent-primary text-lg">
+                                                    {pm.name.charAt(0)}
                                                 </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Corporate Email</label>
-                                                    <input 
-                                                        type="email" 
-                                                        placeholder="name@company.com" 
-                                                        className="prism-input w-full !bg-bg-deep/50" 
-                                                        value={newPM.email}
-                                                        onChange={(e) => setNewPM({...newPM, email: e.target.value})}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2 md:col-span-2">
-                                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest ml-1">Direct Phone Line</label>
-                                                    <input 
-                                                        type="tel" 
-                                                        placeholder="(555) 000-0000" 
-                                                        className="prism-input w-full !bg-bg-deep/50" 
-                                                        value={newPM.phone}
-                                                        onChange={(e) => setNewPM({...newPM, phone: e.target.value})}
-                                                    />
+                                                <div>
+                                                    <div className="font-black text-sm italic uppercase">{pm.name}</div>
+                                                    <div className="text-[9px] font-black uppercase tracking-widest text-text-muted">Project Manager</div>
                                                 </div>
                                             </div>
-                                            <div className="flex justify-end gap-4 border-t border-white/5 pt-6">
-                                                <button className="text-text-muted font-black uppercase text-[10px] tracking-widest px-6 py-3 hover:text-white transition-colors" onClick={() => setIsAddingPM(false)}>Discard</button>
-                                                <button 
-                                                    className="btn-primary !py-3 !px-10 text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(255,107,0,0.2)]"
-                                                    disabled={!newPM.name}
-                                                    onClick={async () => {
-                                                        await handleAddProjectManager(newPM);
-                                                        setNewPM({ name: '', email: '', phone: '' });
-                                                        setIsAddingPM(false);
-                                                    }}
-                                                >
-                                                    Confirm Registration
-                                                </button>
+                                            <div className="text-[11px] font-bold text-text-muted flex flex-col gap-1">
+                                                <div className="flex items-center gap-2"><Mail size={12} className="opacity-40" /> {pm.email}</div>
+                                                <div className="flex items-center gap-2"><Phone size={12} className="opacity-40" /> {pm.phone}</div>
                                             </div>
                                         </div>
-                                    )}
-
-                                    {projectManagers.length === 0 ? (
-                                        <div className="py-20 text-center bg-white/[0.02] rounded-3xl border border-dashed border-white/10">
-                                            <Users size={40} className="mx-auto text-white/10 mb-4" />
-                                            <p className="text-text-muted font-bold text-sm tracking-tight px-12 leading-relaxed">No project managers registered in the company cloud. <br/>Add your first team member to enable automated assignments.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {projectManagers.map(pm => (
-                                                <div key={pm.id} className="group relative p-6 bg-gradient-to-br from-white/[0.04] to-transparent border border-white/[0.03] rounded-3xl hover:border-accent-primary/40 transition-all duration-500 shadow-xl overflow-hidden">
-                                                    <div className="absolute -right-4 -top-4 opacity-5 group-hover:opacity-10 transition-opacity duration-1000 grayscale group-hover:grayscale-0">
-                                                        <Users size={120} />
-                                                    </div>
-                                                    
-                                                    <div className="relative z-10 flex flex-col gap-5">
-                                                        {editingPMId === pm.id ? (
-                                                            <div className="space-y-4 animate-fade-in">
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Full Name</label>
-                                                                    <input 
-                                                                        autoFocus
-                                                                        type="text" 
-                                                                        className="prism-input w-full !py-2 !text-sm" 
-                                                                        value={editingPMData.name}
-                                                                        onChange={(e) => setEditingPMData({...editingPMData, name: e.target.value})}
-                                                                    />
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Email</label>
-                                                                    <input 
-                                                                        type="email" 
-                                                                        className="prism-input w-full !py-2 !text-sm" 
-                                                                        value={editingPMData.email}
-                                                                        onChange={(e) => setEditingPMData({...editingPMData, email: e.target.value})}
-                                                                    />
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest ml-1">Phone</label>
-                                                                    <input 
-                                                                        type="tel" 
-                                                                        className="prism-input w-full !py-2 !text-sm" 
-                                                                        value={editingPMData.phone}
-                                                                        onChange={(e) => setEditingPMData({...editingPMData, phone: e.target.value})}
-                                                                    />
-                                                                </div>
-                                                                <div className="flex gap-2 pt-2">
-                                                                    <button 
-                                                                        className="btn-primary !py-2 !px-4 !text-[10px] flex-1"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleUpdateProjectManager(pm.id, editingPMData);
-                                                                            setEditingPMId(null);
-                                                                        }}
-                                                                    >
-                                                                        Save Changes
-                                                                    </button>
-                                                                    <button 
-                                                                        className="btn-secondary !py-2 !px-4 !text-[10px]"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setEditingPMId(null);
-                                                                        }}
-                                                                    >
-                                                                        Cancel
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                <div className="flex items-start justify-between cursor-pointer" onClick={() => {
-                                                                    setEditingPMId(pm.id);
-                                                                    setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
-                                                                }}>
-                                                                    <div className="flex items-center gap-4">
-                                                                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-accent-primary/20 to-accent-primary/5 flex items-center justify-center font-black text-accent-primary text-2xl border border-accent-primary/20 shadow-inner group-hover:scale-110 transition-transform duration-500">
-                                                                            {pm.name.charAt(0)}
-                                                                        </div>
-                                                                        <div>
-                                                                            <div className="font-black text-xl tracking-tight group-hover:text-white transition-colors leading-none mb-1">{pm.name}</div>
-                                                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-accent-primary/80">Project Manager</div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all transform translate-y-1 group-hover:translate-y-0 duration-300">
-                                                                        <button className="p-2 hover:bg-white/5 rounded-xl text-text-muted hover:text-white transition-colors" onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setEditingPMId(pm.id);
-                                                                            setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
-                                                                        }}>
-                                                                            <Mail size={16} />
-                                                                        </button>
-                                                                        <button 
-                                                                            className="p-2 hover:bg-red-500/10 rounded-xl text-text-muted hover:text-red-400 transition-colors"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleDeleteProjectManager(pm.id);
-                                                                            }}
-                                                                        >
-                                                                            <Trash2 size={16} />
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className="space-y-3 pt-2 cursor-pointer" onClick={() => {
-                                                                    setEditingPMId(pm.id);
-                                                                    setEditingPMData({ name: pm.name, email: pm.email, phone: pm.phone });
-                                                                }}>
-                                                                    <div className="flex items-center gap-3 p-3 bg-black/20 rounded-2xl border border-white/[0.02]">
-                                                                        <div className="p-1.5 bg-white/5 rounded-lg text-accent-primary/60"><Mail size={12} /></div>
-                                                                        <span className="text-xs font-bold tracking-tight text-white/90 truncate">{pm.email}</span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-3 p-3 bg-black/20 rounded-2xl border border-white/[0.02]">
-                                                                        <div className="p-1.5 bg-white/5 rounded-lg text-accent-primary/60"><Phone size={12} /></div>
-                                                                        <span className="text-xs font-bold tracking-tight text-white/90">{pm.phone}</span>
-                                                                    </div>
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-accent-primary/0 to-transparent group-hover:via-accent-primary/40 transition-all duration-1000"></div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    ))}
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Right Column: Templates & Security */}
-                    <div className="lg:col-span-5 space-y-8">
-                        <div className="prism-card p-1 relative overflow-hidden group border-accent-secondary/10">
-                            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none scale-150 rotate-12 group-hover:rotate-0 transition-transform duration-1000">
-                                <FileText size={180} />
+                    <div className="col-span-12 lg:col-span-5 space-y-8">
+                        <div className="prism-card p-8 border-accent-secondary/20 shadow-2xl relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none scale-150 rotate-12 group-hover:rotate-0 transition-transform duration-1000">
+                                <FileText size={120} />
                             </div>
-                            <div className="p-8 relative z-10">
-                                <h3 className="text-2xl font-black mb-1 flex items-center gap-4">
-                                    <div className="p-2.5 bg-accent-secondary/20 rounded-xl">
-                                        <FileText size={24} className="text-accent-secondary" />
-                                    </div>
-                                    Cover Page Template
-                                </h3>
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-accent-secondary mb-8">— Personalized for every project package</p>
-                                
-                                <div className="prism-card bg-bg-deep border-dashed border-white/10 p-12 text-center mb-8 hover:border-accent-secondary/40 transition-colors cursor-pointer group/upload" onClick={() => document.getElementById('template-upload').click()}>
-                                    <input 
-                                        id="template-upload" 
-                                        type="file" 
-                                        className="hidden" 
-                                        accept=".pdf,.png,.jpg"
-                                        onChange={(e) => e.target.files[0] && handleUploadTemplate(e.target.files[0])}
-                                    />
-                                    <div className="w-16 h-16 bg-accent-secondary/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-accent-secondary/20 group-hover/upload:scale-110 transition-transform shadow-[0_0_20px_rgba(0,255,163,0.1)]">
-                                        <FileUp size={32} className="text-accent-secondary" />
-                                    </div>
-                                    <h4 className="font-bold text-lg mb-2">Upload Master Cover</h4>
-                                    <p className="text-text-muted text-sm px-8">Select a PDF or High-Res Image to use as the base for all submittal cover pages.</p>
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-accent-secondary mb-8 flex items-center gap-3">
+                                <FileText size={14} /> Output Standard
+                            </h3>
+                            <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 text-center mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => document.getElementById('template-upload').click()}>
+                                <input id="template-upload" type="file" className="hidden" accept=".pdf" onChange={(e) => e.target.files[0] && handleUploadTemplate(e.target.files[0])} />
+                                <FileUp size={28} className="mx-auto text-accent-secondary mb-4" />
+                                <h4 className="font-black text-sm uppercase italic">Upload Cover Template</h4>
+                            </div>
+                            {companyTemplates.map(tpl => (
+                                <div key={tpl.id} className="p-4 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
+                                    <div className="font-bold text-xs uppercase italic">{tpl.name}</div>
+                                    <button className="text-text-muted hover:text-red-400" onClick={() => handleDeleteTemplate(tpl.id)}><Trash2 size={14} /></button>
                                 </div>
-
-                                {companyTemplates.length > 0 && (
-                                    <div className="space-y-4">
-                                        <h5 className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-4 flex items-center gap-3">
-                                            Active Assets <div className="flex-1 h-[1px] bg-white/5"></div>
-                                        </h5>
-                                        {companyTemplates.map(tpl => (
-                                            <div key={tpl.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between group">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 bg-accent-secondary/20 rounded-xl flex items-center justify-center">
-                                                        <FileText size={20} className="text-accent-secondary" />
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold text-sm tracking-tight">{tpl.name}</div>
-                                                        <div className="text-[10px] text-text-muted font-bold uppercase mt-0.5 tracking-tighter">Cover Page Template</div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button className="text-[10px] font-black uppercase text-accent-secondary hover:underline mr-4 opacity-0 group-hover:opacity-100 transition-opacity">Configure Mapping</button>
-                                                    <button className="p-2 hover:bg-red-500/10 rounded-lg text-text-muted hover:text-red-400" title="Delete Template">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Audit Log / Activity */}
-                        <div className="prism-card p-6 border-white/5 bg-transparent">
-                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-4 flex items-center gap-3">
-                                <Clock size={14} /> Security & Integrity
-                            </h4>
-                            <p className="text-[11px] text-text-muted leading-relaxed italic">Changes to Company Info are logged and immutable. Ensure team members are verified before granting administrative access.</p>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -1974,446 +1703,207 @@ function App() {
                         <h1 className="text-4xl font-black tracking-tighter mb-2 italic uppercase">
                             PROJECT <span className="text-accent-primary underline decoration-8 underline-offset-8">ADMIN</span>
                         </h1>
-                        <p className="text-text-muted font-medium text-lg">Manage project-specific responsibilities, sourcing preferences, and vendor logic.</p>
+                        <p className="text-text-muted font-medium text-lg">Manage project-specific organization and sourcing preferences.</p>
                     </div>
                     <div className="flex gap-4 mb-2">
                         <button className="btn-secondary !py-3 !px-6 flex items-center gap-2 border border-white/10" onClick={() => setView('dashboard')}>
                             <LayoutDashboard size={18} /> Dashboard
                         </button>
-                        <button className="btn-primary !py-3 !px-8 flex items-center gap-2 shadow-[0_0_20px_rgba(255,107,0,0.2)]" onClick={() => setView('workbench')}>
-                            <FileSearch size={18} /> Open Workbench
-                        </button>
                     </div>
                 </div>
 
-                {/* Sub-Tabs Nav */}
-                <div className="flex gap-8 mb-8 border-b border-border-subtle pb-1">
-                    <button 
-                        className={`text-xs font-black uppercase tracking-[0.2em] pb-4 transition-all relative ${adminTab === 'responsibility' ? 'text-accent-primary' : 'text-text-muted hover:text-white'}`}
-                        onClick={() => setAdminTab('responsibility')}
-                    >
-                        Responsibility Master
-                        {adminTab === 'responsibility' && <div className="absolute bottom-0 left-0 w-full h-1 bg-accent-primary rounded-t-full shadow-[0_-4px_10px_rgba(255,107,0,0.5)]"></div>}
-                    </button>
-                    <button 
-                        className={`text-xs font-black uppercase tracking-[0.2em] pb-4 transition-all relative ${adminTab === 'sourcing' ? 'text-accent-primary' : 'text-text-muted hover:text-white'}`}
-                        onClick={() => setAdminTab('sourcing')}
-                    >
-                        Sourcing Logic
-                        {adminTab === 'sourcing' && <div className="absolute bottom-0 left-0 w-full h-1 bg-accent-primary rounded-t-full shadow-[0_-4px_10px_rgba(255,107,0,0.5)]"></div>}
-                    </button>
-                </div>
-
-                <div className="grid grid-cols-12 gap-6 animate-fade-in">
-                    {/* Left Column: Project Metadata - ALWAYS VISIBLE */}
-                    <div className="col-span-12 lg:col-span-4 space-y-6 h-fit">
-                        {/* Card 1: Project Manager */}
-                        <div className="prism-card p-6 border-accent-primary/20 bg-bg-surface/50 shadow-lg">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-6 flex items-center gap-2">
-                                <Users size={14} /> Project Manager
+                <div className="grid grid-cols-12 gap-8">
+                    {/* Left Column: Stats & Setup */}
+                    <div className="col-span-12 lg:col-span-4 space-y-6">
+                        <div className="prism-card p-8 border-accent-primary/20 bg-bg-surface/50 shadow-2xl">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-accent-primary mb-8 flex items-center gap-3">
+                                <Users size={14} /> Project Leadership
                             </h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-4">Project Manager</label>
-                                    <select 
-                                        className="prism-input w-full" 
-                                        value={activeProject.manager_name || ''}
-                                        onChange={(e) => {
-                                            const newName = e.target.value;
-                                            setActiveProject({ ...activeProject, manager_name: newName });
-                                            handleUpdateProjectAdmin({ manager_name: newName });
-                                        }}
-                                    >
-                                        <option value="">Select a Manager...</option>
-                                        {projectManagers.map(pm => (
-                                            <option key={pm.id} value={pm.name}>{pm.name}</option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[9px] text-text-muted font-bold uppercase tracking-widest mt-2 ml-1 italic opacity-60">Reassigning updates all cover pages</p>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-3 ml-1">Assigned Manager</label>
+                                <select 
+                                    className="prism-input !bg-bg-deep/50 text-white font-bold italic w-full" 
+                                    value={activeProject.manager_name || ''}
+                                    onChange={(e) => {
+                                        const newName = e.target.value;
+                                        setActiveProject({ ...activeProject, manager_name: newName });
+                                        handleUpdateProjectAdmin({ manager_name: newName });
+                                    }}
+                                >
+                                    <option value="">Unassigned</option>
+                                    {projectManagers.map(pm => (
+                                        <option key={pm.id} value={pm.name}>{pm.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="prism-card p-8 bg-gradient-to-br from-bg-surface to-bg-deep border-white/5">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-text-muted mb-6 flex items-center gap-3">
+                                <Zap size={14} className="text-accent-primary" /> Progress Metrics
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-5 bg-black/40 rounded-2xl border border-white/5 text-center">
+                                    <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Items</p>
+                                    <p className="text-2xl font-black italic">{(projectData?.recentItems || []).length}</p>
+                                </div>
+                                <div className="p-5 bg-black/40 rounded-2xl border border-white/5 text-center">
+                                    <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Ready</p>
+                                    <p className="text-2xl font-black text-accent-secondary italic">{projectData?.progress || 0}%</p>
                                 </div>
                             </div>
                         </div>
-                                      {/* Card 2: Vendors on the Job (Standalone Block) */}
-                        <div className="prism-card p-6 relative overflow-hidden bg-bg-surface/50 border-accent-secondary/10 shadow-2xl">
-                            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                                <ShoppingBag size={80} />
-                            </div>
-                            <div className="relative z-10">
-                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-6 flex items-center gap-2">
-                                    <ShieldCheck size={14} className="text-accent-secondary" /> Vendors on the Job
-                                </h3>
-                                
-                                <div className="space-y-2 mb-6">
-                                    {authorizedVendors.map((vendor, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-bg-deep/50 border border-white/5 rounded-xl group hover:border-accent-secondary/30 transition-all shadow-sm">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary/40 group-hover:bg-accent-secondary"></div>
-                                                <span className="font-bold text-xs tracking-tight">{vendor}</span>
-                                            </div>
-                                            <button 
-                                                className="text-text-muted hover:text-red-400 transition-colors p-1"
-                                                onClick={() => {
-                                                    const newList = authorizedVendors.filter((_, i) => i !== idx);
-                                                    setAuthorizedVendors(newList);
-                                                    handleUpdateProjectAdmin({ 
-                                                        metadata: { 
-                                                            sourcing_prefs: { 
-                                                                vendors,
-                                                                manufacturers,
-                                                                authorizedVendors: newList 
-                                                            } 
-                                                        } 
-                                                    });
-                                                }}
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </div>
-                                    ))}
+                    </div>
+
+                    {/* Right Column: High-Visibility Management Tables */}
+                    <div className="col-span-12 lg:col-span-8 space-y-12">
+                        {/* Section 1: Vendors on the Job */}
+                        <div className="prism-card p-0 overflow-hidden border-white/5 shadow-2xl flex flex-col animate-fade-in-right">
+                            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-bg-surface/50">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-white italic mb-1">Vendors on the Job</h3>
+                                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight">Active project supply chain entities</p>
                                 </div>
                                 <div className="relative">
-                                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                                     <input 
-                                        placeholder="Add vendor to job..." 
-                                        className="w-full bg-bg-deep border border-border-subtle rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-accent-secondary transition-all"
+                                        placeholder="Add Vendor..."
+                                        className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-primary/20"
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && e.target.value) {
                                                 const newList = [...authorizedVendors, e.target.value];
                                                 setAuthorizedVendors(newList);
-                                                handleUpdateProjectAdmin({ 
-                                                    metadata: { 
-                                                        sourcing_prefs: { 
-                                                            vendors,
-                                                            manufacturers,
-                                                            authorizedVendors: newList 
-                                                        } 
-                                                    } 
-                                                });
+                                                handleUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
                                                 e.target.value = '';
                                             }
                                         }}
                                     />
+                                    <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-primary" />
                                 </div>
                             </div>
+                            <div>
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-white/5 bg-black/20">
+                                            <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Vendor Entity</th>
+                                            <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Sourcing Logic</th>
+                                            <th className="py-5 px-8 text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {authorizedVendors.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="3" className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest italic opacity-50">No Vendors Registered</td>
+                                            </tr>
+                                        ) : authorizedVendors.map((vendor, idx) => (
+                                            <tr key={idx} className="hover:bg-accent-primary/5 transition-colors group">
+                                                <td className="py-5 px-8 font-black text-xs text-white uppercase italic tracking-tight">{vendor}</td>
+                                                <td className="py-5 px-8"><span className="badge badge-green !text-[8px] !font-black !px-2 !py-0.5 tracking-widest uppercase">Contract Valid</span></td>
+                                                <td className="py-5 px-8 text-right">
+                                                    <button 
+                                                        className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                        onClick={() => {
+                                                            const newList = authorizedVendors.filter((_, i) => i !== idx);
+                                                            setAuthorizedVendors(newList);
+                                                            handleUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
+                                                        }}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div className="divider opacity-0 h-4"></div>
 
-                        {/* Card 3: AI Document Sourcing (Preferred Websites) */}
-                        <div className="prism-card p-6 border-accent-primary/20 bg-bg-surface/50 shadow-lg relative overflow-hidden group">
-                            <div className="absolute -top-4 -right-4 w-24 h-24 bg-accent-primary/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-1000"></div>
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-6 flex items-center gap-2">
-                                <Search size={14} className="text-accent-primary" /> AI Search Preferences
-                            </h3>
-                            <div className="space-y-4 relative z-10">
-                                <p className="text-[11px] text-text-muted mb-6 leading-relaxed italic">The AI prioritizes these domains when searching for manufacturer cut sheets for this project.</p>
-                                
-                                <div className="space-y-2 mb-6">
-                                    {preferredWebsites.map((site, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 bg-black/20 border border-white/5 rounded-xl group/site hover:border-accent-primary/30 transition-all font-bold text-xs">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-accent-primary shadow-[0_0_8px_rgba(255,107,0,0.5)]"></div>
-                                                <span className="tracking-tight text-white/90">{site}</span>
-                                            </div>
-                                            <button 
-                                                className="text-text-muted hover:text-red-400 p-1 opacity-0 group-hover/site:opacity-100 transition-opacity"
-                                                onClick={() => {
-                                                    const newList = preferredWebsites.filter((_, i) => i !== idx);
-                                                    setPreferredWebsites(newList);
-                                                    handleUpdateProjectAdmin({ 
-                                                        metadata: { 
-                                                            ...activeProject.metadata,
-                                                            preferred_websites: newList 
-                                                        } 
-                                                    });
-                                                }}
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </div>
-                                    ))}
+                        {/* Section 2: Preferred Search Sites (Vendor Preferences) */}
+                        <div className="prism-card p-0 overflow-hidden border-white/5 shadow-2xl flex flex-col animate-fade-in-right delay-100">
+                            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-bg-surface/50">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-white italic mb-1">Preferred Search Sites</h3>
+                                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight">Tier 0 Discovery Protocol</p>
                                 </div>
-
                                 <div className="relative">
-                                    <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-accent-primary/60" />
                                     <input 
-                                        placeholder="Add search domain (e.g. nvent.com)..." 
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-xs font-bold outline-none focus:border-accent-primary/50 transition-all"
+                                        placeholder="Add Domain..."
+                                        className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-secondary/20"
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && e.target.value) {
                                                 const newList = [...preferredWebsites, e.target.value];
                                                 setPreferredWebsites(newList);
                                                 handleUpdateProjectAdmin({ 
                                                     metadata: { 
-                                                        ...activeProject.metadata,
-                                                        preferred_websites: newList 
+                                                        ...activeProject.metadata, 
+                                                        sourcing_prefs: { 
+                                                            ...activeProject.metadata?.sourcing_prefs,
+                                                            preferred_websites: newList 
+                                                        } 
                                                     } 
                                                 });
                                                 e.target.value = '';
                                             }
                                         }}
                                     />
+                                    <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-secondary" />
                                 </div>
                             </div>
-                        </div>
-
-
-                        {/* Card 4: System Stats */}
-                        <div className="prism-card p-6 bg-gradient-to-br from-bg-surface to-bg-deep border-border-subtle/50 shadow-lg">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-4 flex items-center gap-2">
-                                <Zap size={14} /> System Stats
-                            </h3>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-4 bg-bg-deep rounded-xl border border-border-subtle shadow-inner">
-                                    <p className="text-[10px] font-bold text-text-muted uppercase mb-1">Total Blocks</p>
-                                    <p className="text-xl font-black">{projectData?.divisions?.reduce((acc, d) => acc + (d.tasks || 0), 0) || 0}</p>
-                                </div>
-                                <div className="p-4 bg-bg-deep rounded-xl border border-border-subtle shadow-inner">
-                                    <p className="text-[10px] font-bold text-text-muted uppercase mb-1">Sourced</p>
-                                    <p className="text-xl font-black text-green-400">{projectData?.progress || 0}%</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right Column: Dynamic Content based on tab */}
-                    <div className="col-span-12 lg:col-span-8">
-                        {adminTab === 'responsibility' ? (
-                            <div className="prism-card p-0 overflow-hidden min-h-[600px] flex flex-col border-accent-primary/10 animate-fade-in-right">
-                                <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-bg-deep/40">
-                                    <h3 className="text-sm font-bold uppercase tracking-widest text-text-muted">Section Responsibility Master</h3>
-                                    <div className="flex gap-2">
-                                        <button className="btn-secondary text-[10px] px-3 py-1.5 font-bold uppercase tracking-wider">Set Selection: SELF</button>
-                                        <button className="btn-secondary text-[10px] px-3 py-1.5 font-bold uppercase tracking-wider">Set Selection: VENDOR</button>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="sticky top-0 bg-bg-surface z-10 shadow-sm text-white">
-                                            <tr className="border-b border-border-subtle">
-                                                <th className="p-4 w-10"><input type="checkbox" className="rounded bg-bg-deep border-border-subtle" /></th>
-                                                <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Section</th>
-                                                <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Title</th>
-                                                <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest text-center">Resp</th>
-                                                <th className="py-4 px-2 text-[10px] font-black text-text-muted uppercase tracking-widest">Assigned Vendor</th>
+                            <div>
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-white/5 bg-black/20">
+                                            <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Priority Domain</th>
+                                            <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Discovery Level</th>
+                                            <th className="py-5 px-8 text-right"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {preferredWebsites.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="3" className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest italic opacity-50">No Priority Sites Defined</td>
                                             </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border-subtle/30">
-                                            {projectData?.recentItems?.map(section => (
-                                                <tr key={section.id} className="hover:bg-accent-primary/5 transition-colors group">
-                                                    <td className="p-4"><input type="checkbox" className="rounded bg-bg-deep border-border-subtle" /></td>
-                                                    <td className="py-4 px-2 font-mono text-xs font-bold text-accent-primary">{section.id}</td>
-                                                    <td className="py-4 px-2 text-xs font-bold">{section.title}</td>
-                                                    <td className="py-4 px-2 text-center">
-                                                        <select 
-                                                            className="bg-bg-deep border border-border-subtle rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white focus:outline-none focus:border-accent-primary"
-                                                            value={section.metadata?.responsibility || 'SELF'}
-                                                            onChange={(e) => handleUpdateSectionResponsibility(section.dbId, e.target.value, section.metadata?.vendor_name)}
-                                                        >
-                                                            <option value="SELF">SELF</option>
-                                                            <option value="VENDOR">VENDOR</option>
-                                                            <option value="NA">N/A</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="py-4 px-2 text-xs text-text-muted">
-                                                        {section.metadata?.responsibility === 'VENDOR' ? (
-                                                            <select 
-                                                                className="bg-transparent text-xs font-bold p-1 outline-none text-accent-primary"
-                                                                value={section.metadata?.vendor_name || 'None'}
-                                                                onChange={(e) => handleUpdateSectionResponsibility(section.dbId, 'VENDOR', e.target.value)}
-                                                            >
-                                                                <option value="None">Assign Vendor...</option>
-                                                                {authorizedVendors.map(vendor => (
-                                                                    <option key={vendor} value={vendor}>{vendor}</option>
-                                                                ))}
-                                                            </select>
-                                                        ) : (
-                                                            <span className="text-text-muted opacity-50 block p-1">Internal Scope</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="sourcing-logic-panel space-y-6 animate-fade-in-right">
-                                {/* Tier 1: Preferred Vendors */}
-                                <div className="prism-card p-8 relative overflow-hidden bg-bg-surface/50 border-accent-primary/10 shadow-2xl">
-                                    <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
-                                        <ShoppingBag size={140} />
-                                    </div>
-                                    <div className="relative z-10">
-                                        <h3 className="text-2xl font-black mb-1 flex items-center gap-4">
-                                            <div className="p-2 bg-accent-primary/20 rounded-xl">
-                                                <Search size={24} className="text-accent-primary" />
-                                            </div>
-                                            Primary Document Sources
-                                        </h3>
-                                        <p className="text-[10px] font-black uppercase text-accent-primary tracking-[0.2em] mb-8 ml-14">— Searches these preferred sites before manufacturer sites</p>
-                                        
-                                        <div className="space-y-3 mb-8">
-                                            {vendors.map((vendor, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-4 bg-bg-deep/60 border border-white/5 rounded-2xl group hover:border-accent-primary/40 transition-all shadow-lg">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black text-text-muted group-hover:text-accent-primary">{idx + 1}</div>
-                                                        <span className="font-bold text-base tracking-tight">{vendor}</span>
-                                                    </div>
-                                                    <div className="flex gap-3">
-                                                        <button className="text-text-muted hover:text-white p-1.5 hover:bg-white/5 rounded-lg transition-colors"><ArrowUp size={16} /></button>
-                                                        <button className="text-text-muted hover:text-white p-1.5 hover:bg-white/5 rounded-lg transition-colors"><ArrowDown size={16} /></button>
-                                                        <button className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-500/10 rounded-lg" onClick={() => {
-                                                            const newList = vendors.filter((_, i) => i !== idx);
-                                                            setVendors(newList);
+                                        ) : preferredWebsites.map((site, idx) => (
+                                            <tr key={idx} className="hover:bg-accent-secondary/5 transition-colors group">
+                                                <td className="py-5 px-8 font-black text-xs text-white lowercase italic underline decoration-accent-secondary/30">{site}</td>
+                                                <td className="py-5 px-8"><span className="badge badge-blue !text-[8px] !font-black !px-2 !py-0.5 tracking-widest uppercase">Tier 0 Override</span></td>
+                                                <td className="py-5 px-8 text-right">
+                                                    <button 
+                                                        className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                        onClick={() => {
+                                                            const newList = preferredWebsites.filter((_, i) => i !== idx);
+                                                            setPreferredWebsites(newList);
                                                             handleUpdateProjectAdmin({ 
                                                                 metadata: { 
+                                                                    ...activeProject.metadata, 
                                                                     sourcing_prefs: { 
-                                                                        authorizedVendors,
-                                                                        manufacturers,
-                                                                        vendors: newList 
+                                                                        ...activeProject.metadata?.sourcing_prefs,
+                                                                        preferred_websites: newList 
                                                                     } 
                                                                 } 
                                                             });
-                                                        }}><Plus className="rotate-45" size={16} /></button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex gap-3 p-2 bg-black/40 rounded-2xl border border-white/5">
-                                            <input 
-                                                type="text" 
-                                                placeholder="Enter new source URL (e.g. graybar.com)..." 
-                                                className="bg-transparent px-4 py-3 text-sm flex-1 outline-none placeholder:text-white/20 font-medium"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && e.target.value) {
-                                                        const newList = [...vendors, e.target.value];
-                                                        setVendors(newList);
-                                                        handleUpdateProjectAdmin({ 
-                                                            metadata: { 
-                                                                sourcing_prefs: { 
-                                                                    authorizedVendors,
-                                                                    manufacturers,
-                                                                    vendors: newList 
-                                                                } 
-                                                            } 
-                                                        });
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                            />
-                                            <button className="btn-primary !py-3 !px-8 !rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-accent-primary/20" onClick={(e) => {
-                                                const input = e.currentTarget.previousElementSibling;
-                                                if (input.value) {
-                                                    const newList = [...vendors, input.value];
-                                                    setVendors(newList);
-                                                    handleUpdateProjectAdmin({ 
-                                                        metadata: { 
-                                                            sourcing_prefs: { 
-                                                                authorizedVendors,
-                                                                manufacturers,
-                                                                vendors: newList 
-                                                            } 
-                                                        } 
-                                                    });
-                                                    input.value = '';
-                                                }
-                                            }}>Add Source</button>
-                                        </div>
-                                    </div>
-                                </div>
-
-
-
-                                {/* Tier 2: Approved Manufacturers */}
-                                <div className="prism-card p-8 relative overflow-hidden bg-bg-surface/50 border-accent-secondary/10 shadow-2xl">
-                                    <div className="absolute top-0 right-0 p-6 opacity-5 pointer-events-none">
-                                        <Building2 size={140} />
-                                    </div>
-                                    <div className="relative z-10">
-                                        <h3 className="text-2xl font-black mb-1 flex items-center gap-4">
-                                            <div className="p-2 bg-accent-secondary/20 rounded-xl">
-                                                <ShieldCheck size={24} className="text-accent-secondary" />
-                                            </div>
-                                            Authorized Manufacturers
-                                        </h3>
-                                        <p className="text-[10px] font-black uppercase text-accent-secondary tracking-[0.2em] mb-8 ml-14">— Used for backup "Pivot" search if vendors fail</p>
-                                        
-                                        <div className="flex flex-wrap gap-2 mb-8 ml-14">
-                                            {manufacturers.map((m, idx) => (
-                                                <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-bg-deep border border-white/5 rounded-full group hover:border-accent-secondary/40 transition-all font-bold text-xs">
-                                                    <span>{m}</span>
-                                                    <button className="text-text-muted hover:text-red-400" onClick={() => {
-                                                        const newList = manufacturers.filter((_, i) => i !== idx);
-                                                        setManufacturers(newList);
-                                                        handleUpdateProjectAdmin({ 
-                                                            metadata: { 
-                                                                sourcing_prefs: { 
-                                                                    vendors,
-                                                                    authorizedVendors,
-                                                                    manufacturers: newList 
-                                                                } 
-                                                            } 
-                                                        });
-                                                    }}><X size={10} /></button>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex gap-3 p-2 bg-black/40 rounded-2xl border border-white/5 mx-14">
-                                            <input 
-                                                type="text" 
-                                                placeholder="Enter brand name (e.g. Leviton)..." 
-                                                className="bg-transparent px-4 py-3 text-sm flex-1 outline-none placeholder:text-white/20 font-medium"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && e.target.value) {
-                                                        const newList = [...manufacturers, e.target.value];
-                                                        setManufacturers(newList);
-                                                        handleUpdateProjectAdmin({ 
-                                                            metadata: { 
-                                                                sourcing_prefs: { 
-                                                                    vendors,
-                                                                    authorizedVendors,
-                                                                    manufacturers: newList 
-                                                                } 
-                                                            } 
-                                                        });
-                                                        e.target.value = '';
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="prism-card p-6 bg-accent-primary/5 border border-accent-primary/20 rounded-2xl shadow-xl shadow-accent-primary/5">
-                                    <div className="flex gap-6 items-center">
-                                        <div className="w-16 h-16 rounded-2xl bg-accent-primary/20 flex items-center justify-center shrink-0 shadow-lg shadow-accent-primary/10">
-                                            <ShieldCheck size={32} className="text-accent-primary" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-black text-xl tracking-tight mb-1">Intelligent Brand Pivot <span className="text-accent-primary uppercase text-[10px] ml-2 px-2 py-0.5 bg-accent-primary/10 rounded-full tracking-widest">Active</span></h4>
-                                            <p className="text-sm text-text-muted leading-relaxed max-w-2xl">
-                                                If preferred vendors fail to yield a match, the AI automatically pivots to searching for the 
-                                                <span className="text-white font-bold mx-1">approved manufacturers</span> 
-                                                extracted directly from your project specifications.
-                                            </p>
-                                        </div>
-                                        <div className="ml-auto">
-                                            <div className="w-14 h-7 bg-accent-primary rounded-full relative cursor-pointer shadow-[0_0_20px_rgba(255,107,0,0.3)] border-2 border-accent-primary/50">
-                                                <div className="w-5 h-5 bg-black rounded-full absolute right-1 top-1 shadow-md"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                                        }}
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
-                        )}
+                            <div className="p-8 bg-accent-primary/10 border-t border-accent-primary/20 flex gap-4 items-center">
+                                <ShieldCheck size={24} className="text-accent-primary shrink-0" />
+                                <p className="text-[11px] font-bold text-text-muted leading-snug">
+                                    Discovery engine prioritizes <span className="text-white">Priority Domains</span> before falling back to specification Extraction.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         );
     };
+
 
 
 
