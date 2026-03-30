@@ -135,9 +135,24 @@ app.post('/api/upload-cutsheet', upload.single('pdf'), async (req, res) => {
     }
 });
 
+app.get('/api/discover', async (req, res) => {
+    const { pdfPath } = req.query;
+    if (!pdfPath) return res.status(400).json({ error: 'pdfPath is required' });
+
+    try {
+        const engine = new DiscoveryEngine(pdfPath);
+        const sections = await engine.discover();
+        res.json({ success: true, sections });
+    } catch (error) {
+        console.error('[API] Discovery Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/shred', async (req, res) => {
-    const { projectId, pdfPath } = req.query;
+    const { projectId, pdfPath, selectedSections } = req.query;
     const jobId = `job_${Date.now()}`;
+    const limitToIds = selectedSections ? selectedSections.split(',') : null;
     
     console.log(`--- [API] Shredding Start | Project: ${projectId} | PDF: ${pdfPath} | Job: ${jobId} ---`);
     
@@ -145,6 +160,9 @@ app.get('/api/shred', async (req, res) => {
         if (!projectId) throw new Error("Missing projectId in request.");
         if (!pdfPath) throw new Error("Missing pdfPath. Upload a PDF first.");
         if (!fs.existsSync(pdfPath)) throw new Error(`PDF not found at: ${pdfPath}`);
+
+        console.log(`[API] Starting shred job: ${jobId} for project ${projectId}`);
+        if (limitToIds) console.log(`[API] Limiting to ${limitToIds.length} sections.`);
 
         // Clear existing sections for this project to ensure a clean start
         console.log(`[API] Cleaning previous shred data for project: ${projectId}`);
@@ -167,7 +185,7 @@ app.get('/api/shred', async (req, res) => {
                     jobs[jobId].totalPages = prog.totalPages;
                     jobs[jobId].currentPage = prog.currentPage;
                     jobs[jobId].progress = Math.round((prog.currentPage / prog.totalPages) * 100);
-                });
+                }, limitToIds);
                 
                 jobs[jobId].status = 'persisting';
                 console.log(`[API] Job ${jobId}: Scanned ${sections.length} sections. Saving to Supabase...`);
