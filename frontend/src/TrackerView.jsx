@@ -206,7 +206,7 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
                             );
                         })}
 
-                        {sections.length === 0 && (
+                        {sortedSections.length === 0 && (
                             <tr>
                                 <td colSpan={6} className="p-12 text-center text-text-muted">
                                     No specification sections found for this project.

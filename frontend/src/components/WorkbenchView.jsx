@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     CheckCircle2, Clock, Zap, FileText, 
     ExternalLink, Search, Plus, Trash2,
@@ -26,6 +26,7 @@ const WorkbenchView = ({
     activeSubProductIndex,
     setActiveSubProductIndex,
     isSourcing,
+    sourcingProgressPct,
     isShredding,
     shredStatusMsg,
     shredProgress,
@@ -34,13 +35,17 @@ const WorkbenchView = ({
     handleVendorUpload,
     setView
 }) => {
-    if (!projectData && isShredding) {
-        return (
-            <div className="workbench-root animate-fade-in flex items-center justify-center">
+    const [pdfAlignmentOffset, setPdfAlignmentOffset] = useState(0);
+    const [hoveredRequirement, setHoveredRequirement] = useState(null);
+
+    if (!selectedDivision) return (
+        <div className="workbench-root animate-fade-in flex items-center justify-center">
+            {isShredding ? (
                 <div className="text-center text-text-muted max-w-md w-full px-6">
                     <FileSearch size={64} className="mx-auto mb-6 text-accent-primary animate-pulse" />
                     <h2 className="text-2xl font-black mb-3">Architect is Discovering...</h2>
                     <p className="text-sm mb-8 leading-relaxed">We are scanning the PDF meta-data and mapping sections to your workbench. This takes a moment for 900+ page documents.</p>
+                    
                     <div className="space-y-4">
                         <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-accent-primary">
                             <span>{shredStatusMsg}</span>
@@ -54,20 +59,18 @@ const WorkbenchView = ({
                         </div>
                     </div>
                 </div>
-            </div>
-        );
-    }
-
-    if (!selectedDivision) return (
-        <div className="flex flex-col items-center justify-center h-full text-text-muted">
-            <LayoutDashboard size={48} className="mb-4 opacity-20" />
-            <h3>Select a Division from the Dashboard</h3>
-            <button className="btn-secondary mt-4" onClick={() => setView('dashboard')}>Go to Dashboard</button>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] text-text-muted">
+                    <LayoutDashboard size={48} className="mb-4 opacity-20" />
+                    <h3>Select a Division from the Dashboard</h3>
+                    <button className="btn-secondary mt-4 px-8" onClick={() => setView('dashboard')}>Go to Dashboard</button>
+                </div>
+            )}
         </div>
     );
 
     return (
-        <div className="workbench-root animate-fade-in">
+        <div className="workbench-root animate-fade-in flex flex-col h-full overflow-hidden">
             <div className="workbench-header flex items-center gap-4 mb-6">
                 <button className="btn-icon" onClick={() => setView('dashboard')}><LayoutDashboard size={20} /></button>
                 <div>
@@ -102,177 +105,370 @@ const WorkbenchView = ({
             </div>
 
             <div className="workbench-grid">
-                {/* Left Side: Spec List */}
-                <div className="workbench-sidebar space-y-3">
+                {/* Left side: Spec List */}
+                <div className="workbench-sidebar custom-scrollbar h-full overflow-y-auto pr-2">
                     <button
-                        onClick={onAddSection}
-                        className="w-full p-2.5 flex items-center justify-center gap-2 rounded-lg text-xs font-bold border border-dashed border-border-subtle bg-transparent text-text-muted hover:border-accent-primary hover:text-accent-primary transition-all"
+                        onClick={() => {
+                            
+                            onAddSection();
+                        }}
+                        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: '1px dashed var(--border-subtle)', background: 'transparent', color: 'var(--text-muted)', transition: 'all 0.2s' }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-primary)'; e.currentTarget.style.color = 'var(--accent-primary)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                     >
-                        <Plus size={14} /> Add Section
+                        <Plus size={14} /> Add Missing Section
                     </button>
-                    
-                    <div className="space-y-2 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: 'calc(100vh - 380px)' }}>
-                        {(projectData?.recentItems || [])
-                            .filter(item => item.id.startsWith(selectedDivision.id))
-                            .map(item => {
-                                const p1 = item.part1_progress || 0;
-                                const p2 = item.part2_progress || 0;
-                                const p3 = item.part3_progress || 0;
-                                const isSelected = selectedSpec?.id === item.id;
+                    {(projectData?.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
+                        const p1Progress = item.part1_progress || 0;
+                        const p2Progress = item.part2_progress || 0;
+                        const p3Progress = item.part3_progress || 0;
+                        
+                        return (
+                        <div 
+                            key={item.id} 
+                            className={`item-card prism-card cursor-pointer transition-all ${selectedSpec?.id === item.id ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            onClick={() => { setSelectedSpec(item); setSelectedBlock(null); }}
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs text-text-muted font-mono bg-black/20 px-2 py-1 rounded">{item.id}</span>
+                                {item.match && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.match > 90 ? 'bg-accent-secondary/20 text-accent-secondary' : 'bg-accent-primary/20 text-accent-primary'}`}>
+                                        {item.match}% Match
+                                    </span>
+                                )}
+                            </div>
+                            <h4 className="font-bold text-sm leading-tight mb-3">{item.title}</h4>
+                            
+                            <div className="flex flex-col gap-1 mt-auto bg-bg-deep rounded p-3 border border-border-subtle">
+                                <div className="flex justify-between items-center w-full text-xs">
+                                    <span className="text-text-muted">Part 1</span>
+                                    <span className={`font-mono font-bold ${p1Progress === 100 ? 'text-accent-secondary' : p1Progress > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>&nbsp;&nbsp;{p1Progress}%</span>
+                                </div>
+                                <div className="flex justify-between items-center w-full text-xs">
+                                    <span className="text-text-muted">Part 2</span>
+                                    <span className={`font-mono font-bold ${p2Progress === 100 ? 'text-accent-secondary' : p2Progress > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>&nbsp;&nbsp;{p2Progress}%</span>
+                                </div>
+                                <div className="flex justify-between items-center w-full text-xs">
+                                    <span className="text-text-muted">Part 3</span>
+                                    <span className={`font-mono font-bold ${p3Progress === 100 ? 'text-accent-secondary' : p3Progress > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>&nbsp;&nbsp;{p3Progress}%</span>
+                                </div>
 
-                                return (
-                                    <div 
-                                        key={item.id} 
-                                        className={`item-card prism-card group cursor-pointer transition-all !p-4 ${isSelected ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/30'}`}
-                                        onClick={() => setSelectedSpec(item)}
+                                <div className="mt-4 pt-3 border-t border-white/5">
+                                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest block mb-1.5 px-0.5">Source / Responsibility</label>
+                                    <select 
+                                        className="w-full bg-bg-deep border border-border-subtle rounded-md px-2 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-accent-primary outline-none cursor-pointer transition-all hover:border-accent-primary/30 appearance-none"
+                                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em' }}
+                                        value={sectionResponsibility[item.id] || 'SELF'}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            setSectionResponsibility({...sectionResponsibility, [item.id]: e.target.value});
+                                        }}
                                     >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-[10px] font-black text-accent-primary tracking-widest">{item.id}</span>
-                                            {item.match && <span className="text-[9px] font-bold text-accent-secondary opacity-80">{item.match}% Match</span>}
-                                        </div>
-                                        <h4 className="font-bold text-sm leading-tight mb-3">{item.title}</h4>
-                                        <div className="flex flex-col gap-1 mt-auto bg-bg-deep rounded p-3 border border-border-subtle">
-                                            <div className="flex justify-between items-center w-full text-xs">
-                                                <span className="text-text-muted">Part 1</span>
-                                                <span className={`font-mono font-bold ${p1 === 100 ? 'text-accent-secondary' : p1 > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>{p1}%</span>
-                                            </div>
-                                            <div className="flex justify-between items-center w-full text-xs">
-                                                <span className="text-text-muted">Part 2</span>
-                                                <span className={`font-mono font-bold ${p2 === 100 ? 'text-accent-secondary' : p2 > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>{p2}%</span>
-                                            </div>
-                                            <div className="flex justify-between items-center w-full text-xs">
-                                                <span className="text-text-muted">Part 3</span>
-                                                <span className={`font-mono font-bold ${p3 === 100 ? 'text-accent-secondary' : p3 > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>{p3}%</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        }
-                    </div>
+                                        <option value="SELF">Self-Perform</option>
+                                        <option value="VENDOR">Vendor-Managed</option>
+                                        <option value="NA">Not Applicable (Exclude)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )})}
                 </div>
 
-                {/* Right Side: Detail View */}
+                {/* Right side: Detail View */}
                 {selectedSpec ? (
-                    <div className="workbench-main prism-card flex flex-col h-full">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-2xl font-bold">{selectedSpec.id} - {selectedSpec.title}</h3>
-                            <span className="badge badge-green"><ShieldCheck size={12} className="mr-1" /> Verified</span>
+                <div className="workbench-main prism-card flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex flex-col gap-2">
+                            <h3 className="text-lg font-bold">{selectedSpec?.id.slice(0,2)} {selectedSpec?.id.slice(2,4)} {selectedSpec?.id.slice(4)} - {selectedSpec?.title}</h3>
                         </div>
-
-                        {/* Part Tabs */}
-                        <div className="flex flex-row gap-3 mb-6 font-mono">
-                            {['part1', 'part2', 'part3'].map((p, idx) => (
-                                <div 
-                                    key={p}
-                                    className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === p ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
-                                    onClick={() => setSelectedPart(p)}
+                        <div className="flex gap-2">
+                            <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
+                        </div>
+                    </div>
+                    <div className="flex flex-row flex-nowrap gap-3 mb-6 font-mono">
+                        <div 
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === 'part1' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            onClick={() => setSelectedPart('part1')}
+                        >
+                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 1</h4>
+                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">General</span>
+                        </div>
+                        <div 
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative ${selectedPart === 'part2' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            onClick={() => setSelectedPart('part2')}
+                        >
+                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 2</h4>
+                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Products</span>
+                            {selectedPart === 'part2' && <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-accent-primary animate-pulse"></div>}
+                        </div>
+                        <div 
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === 'part3' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            onClick={() => setSelectedPart('part3')}
+                        >
+                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 3</h4>
+                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Execution</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-8 flex-1 w-full pb-32">
+                        {(sectionResponsibility[selectedSpec?.id] || 'SELF') === 'NA' ? (
+                            <div className="col-span-2 flex flex-col items-center justify-center p-20 opacity-50 grayscale animate-fade-in">
+                                <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
+                                    <ShieldCheck size={48} className="text-text-muted" />
+                                </div>
+                                <h4 className="text-xl font-bold">Section Excluded</h4>
+                                <p className="text-text-muted text-sm">This specification section is marked as Not Applicable for this submittal.</p>
+                                <button 
+                                    className="btn-secondary mt-6 scale-90"
+                                    onClick={() => setSectionResponsibility({...sectionResponsibility, [selectedSpec?.id]: 'SELF'})}
                                 >
-                                    <h4 className="font-bold text-[10px] uppercase opacity-70">PART {idx + 1}</h4>
-                                    <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">
-                                        {p === 'part1' ? 'General' : p === 'part2' ? 'Products' : 'Execution'}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden" style={{ height: 'calc(100vh - 280px)' }}>
-                            {(sectionResponsibility[selectedSpec.id] || 'SELF') === 'NA' ? (
-                                <div className="col-span-2 flex flex-col items-center justify-center opacity-50">
-                                    <ShieldCheck size={48} className="text-text-muted mb-4" />
-                                    <h4 className="text-xl font-bold">Section Excluded</h4>
-                                    <button className="btn-secondary mt-6" onClick={() => setSectionResponsibility({...sectionResponsibility, [selectedSpec.id]: 'SELF'})}>Include Section</button>
-                                </div>
-                            ) : (sectionResponsibility[selectedSpec.id] || 'SELF') === 'VENDOR' ? (
-                                <div className="col-span-2 flex flex-col items-center justify-center">
-                                    <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg bg-accent-secondary/5">
-                                        <FileText size={32} className="text-accent-secondary mx-auto mb-6" />
-                                        <h4 className="text-2xl font-extrabold pb-2">Vendor Cut Sheets</h4>
-                                        <p className="text-text-muted text-sm mb-8">Drop manufacturer cut sheets here. We will still generate premium cover sheets.</p>
-                                        <button className="btn-primary" onClick={handleVendorUpload}>Upload Files</button>
+                                    Include Section
+                                </button>
+                            </div>
+                        ) : (sectionResponsibility[selectedSpec?.id] || 'SELF') === 'VENDOR' ? (
+                            <div className="col-span-2 flex flex-col items-center justify-center p-20 animate-fade-in">
+                                <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg w-full bg-accent-secondary/5 shadow-[0_0_50px_rgba(0,255,163,0.05)]">
+                                    <div className="w-16 h-16 bg-accent-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                        <FileText size={32} className="text-accent-secondary" />
+                                    </div>
+                                    <h4 className="text-2xl font-extrabold pb-2 tracking-tight">Vendor Cut Sheets</h4>
+                                    <p className="text-text-muted text-sm leading-relaxed mb-8">
+                                        Drop the manufacturer cut sheets received from the vendor here. 
+                                        We will still generate high-premium cover sheets for these items once uploaded.
+                                    </p>
+                                    <div className="flex gap-4 justify-center">
+                                        <button className="btn-primary px-8" onClick={handleVendorUpload}>Upload Files</button>
+                                        <button className="btn-secondary">Request from Vendor</button>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="col-span-2 grid grid-cols-2 gap-8 h-full">
-                                    <div className="flex flex-col h-full overflow-hidden">
-                                        <div className="flex-1 pb-20 overflow-y-auto custom-scrollbar">
-                                            <FormattedSpecText 
-                                                text={selectedPart === 'part2' ? selectedSpec.part2?.rawText : selectedSpec[selectedPart]}
-                                                specId={selectedSpec.id}
-                                                partId={selectedPart}
-                                                completedBlocks={completedBlocks}
-                                                naBlocks={naBlocks}
-                                                onToggleBlock={toggleBlockCompletion}
-                                                onBlockSelect={(block) => {
-                                                    setSelectedBlock(block);
-                                                    setActiveSubProductIndex(0);
-                                                }}
-                                                selectedBlockKey={selectedBlock?.blockKey}
-                                                aiBlocks={selectedSpec.aiBlockMap}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Sourcing Preview */}
-                                    <div className="flex flex-col h-full overflow-hidden border-l border-white/5">
-                                        {isSourcing ? (
-                                            <div className="flex flex-col items-center justify-center h-full text-center">
-                                                <div className="w-16 h-16 border-4 border-accent-secondary border-t-transparent rounded-full animate-spin mb-6" />
-                                                <h3 className="text-xl font-black uppercase tracking-tight">Sourcing Intelligence...</h3>
+                            </div>
+                        ) : (
+                            <div className="col-span-2 grid grid-cols-2 gap-8 h-full min-h-0 overflow-hidden">
+                                <div className="flex flex-col h-full overflow-hidden relative min-h-0">
+                                    <div className="absolute inset-0 pb-[20vh] overflow-y-auto custom-scrollbar pr-2">
+                                        {selectedPart === 'part1' && (
+                                            <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
+                                                <FormattedSpecText
+                                                    text={selectedSpec?.part1}
+                                                    specId={selectedSpec?.id}
+                                                    partId="part1"
+                                                    completedBlocks={completedBlocks}
+                                                    naBlocks={naBlocks}
+                                                    onToggleBlock={toggleBlockCompletion}
+                                                />
                                             </div>
-                                        ) : selectedBlock ? (() => {
-                                            const blockData = selectedSpec.metadata?.sourcedBlocks?.[selectedBlock.blockKey];
-                                            if (!blockData) return (
-                                                <div className="flex flex-col items-center justify-center h-full opacity-50">
-                                                    <Search size={32} className="mb-4" />
-                                                    <p className="text-sm uppercase font-bold">No sourcing data for this block</p>
-                                                </div>
-                                            );
-                                            const items = Array.isArray(blockData) ? blockData : [blockData];
-                                            const currentItem = items[activeSubProductIndex] || items[0];
-                                            const compPct = Math.round((currentItem.complianceScore || 0) * 100);
+                                        )}
 
-                                            return (
-                                                <div className="flex flex-col h-full">
-                                                    <div className="p-6 border-b border-white/10">
-                                                        <div className="flex justify-between items-start mb-4">
-                                                            <div>
-                                                                <span className={`badge ${compPct >= 80 ? 'badge-green' : 'badge-orange'} mb-2`}>{compPct}% Match</span>
-                                                                <h4 className="text-lg font-extrabold uppercase leading-tight">{selectedBlock.blockTitle}</h4>
-                                                            </div>
-                                                            <button className="btn-icon" onClick={() => setExpandedPdfUrl(currentItem.cutsheetUrl)}><Maximize size={16} /></button>
-                                                        </div>
-                                                        <div className="bg-white/5 p-3 rounded-lg">
-                                                            <p className="text-[11px] text-text-muted italic">"{currentItem.complianceReason}"</p>
-                                                        </div>
+                                        {selectedPart === 'part3' && (
+                                            <div className="animate-fade-in text-sm text-text-muted leading-relaxed">
+                                                <FormattedSpecText 
+                                                    text={selectedSpec?.part3} 
+                                                    specId={selectedSpec?.id} 
+                                                    partId="part3"
+                                                    completedBlocks={completedBlocks}
+                                                    naBlocks={naBlocks}
+                                                    onToggleBlock={toggleBlockCompletion}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {selectedPart === 'part2' && (
+                                            <div className="animate-fade-in h-full">
+                                                {selectedSpec?.part2?.rawText ? (
+                                                    <div className="text-sm text-text-muted leading-relaxed">
+                                                        <FormattedSpecText 
+                                                            text={selectedSpec?.part2?.rawText} 
+                                                            specId={selectedSpec?.id} 
+                                                            partId="part2"
+                                                            completedBlocks={completedBlocks}
+                                                            naBlocks={naBlocks}
+                                                            onToggleBlock={toggleBlockCompletion}
+                                                            onBlockSelect={(block) => {
+                                                                setSelectedBlock(block);
+                                                                setActiveSubProductIndex(0);
+                                                            }}
+                                                            selectedBlockKey={selectedBlock?.blockKey}
+                                                            aiBlocks={selectedSpec?.aiBlockMap || null}
+                                                        />
                                                     </div>
-                                                    <div className="flex-1 bg-black/20">
-                                                        {currentItem.cutsheetUrl ? (
-                                                            <iframe 
-                                                                src={`${currentItem.cutsheetUrl}#navpanes=0&toolbar=0&view=Fit`} 
-                                                                className="w-full h-full border-none"
-                                                            />
-                                                        ) : (
-                                                            <div className="flex items-center justify-center h-full text-text-muted">No PDF available</div>
-                                                        )}
+                                                ) : (
+                                                    <div className="flex items-center justify-center h-full text-text-muted">
+                                                        No Part 2 content available.
                                                     </div>
-                                                </div>
-                                            );
-                                        })() : (
-                                            <div className="flex flex-col items-center justify-center h-full opacity-30">
-                                                <Search size={48} className="mb-4" />
-                                                <h4 className="font-bold uppercase tracking-widest">Select a block to review</h4>
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
+
+                                {/* Right Side: PDF / Sourcing View */}
+                                <div className="flex flex-col h-full overflow-hidden border-l border-white/5 relative">
+                                    {isSourcing ? (
+                                        <div className="flex flex-col items-center justify-center p-12 text-center w-full h-full animate-fade-in">
+                                            <div className="relative mb-8 flex items-center justify-center">
+                                                <div className="w-24 h-24 border-[4px] border-bg-deep rounded-full"></div>
+                                                <div 
+                                                    className="w-24 h-24 border-[4px] border-accent-secondary border-t-transparent rounded-full absolute top-0 left-0 animate-spin"
+                                                    style={{ animationDuration: '3s' }}
+                                                ></div>
+                                                <div className="absolute inset-0 flex items-center justify-center font-black text-xl text-white drop-shadow-md">
+                                                    {sourcingProgressPct || 0}%
+                                                </div>
+                                            </div>
+                                            <h3 className="text-xl font-black uppercase tracking-tight text-white mb-4">Sourcing Intelligence...</h3>
+                                            <div className="w-64 max-w-[80%] h-2 bg-bg-deep rounded-full overflow-hidden shadow-inner">
+                                                <div 
+                                                    className="h-full bg-accent-primary transition-all duration-[800ms] shadow-[0_0_15px_rgba(255,107,0,0.8)]" 
+                                                    style={{ width: `${sourcingProgressPct || 0}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    ) : (selectedBlock?.isRule) ? (
+                                        <div className="flex flex-col items-center justify-center p-10 text-center h-full">
+                                            <FileText size={48} className="text-text-muted mb-4 opacity-50" />
+                                            <h4 className="font-bold uppercase tracking-widest text-text-muted">Specification Rule</h4>
+                                            <p className="text-text-muted text-xs px-10">No cutsheet needed for rule blocks.</p>
+                                        </div>
+                                    ) : (() => {
+                                        const blockData = selectedBlock?.blockKey ? selectedSpec?.metadata?.sourcedBlocks?.[selectedBlock.blockKey] : null;
+                                        if (!blockData) return (
+                                            <div className="flex flex-col items-center justify-center p-12 text-center h-full opacity-50">
+                                                <Search size={32} className="mb-4" />
+                                                <p className="text-sm uppercase tracking-widest font-bold">Select a block to source</p>
+                                            </div>
+                                        );
+
+                                        const items = Array.isArray(blockData) ? blockData : [blockData];
+                                        const currentItem = items[activeSubProductIndex] || items[0];
+                                        // console.log("[Architect Debug] Current Product Item:", currentItem);
+
+                                        const score = currentItem.complianceScore;
+                                        const compPct = score != null ? Math.round(score * 100) : 0;
+                                        const matched = currentItem.matchedRequirements || [];
+                                        const compLabel = compPct >= 80 ? "Spec Compliant" : compPct >= 60 ? "Needs Review" : "Likely Wrong Product";
+
+                                        return (
+                                            <div className="flex flex-col h-full overflow-hidden">
+                                                {/* Compliance Scorecard Header */}
+                                                <div className="sourcing-clean-header flex flex-col gap-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex flex-col">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className={`badge ${compPct >= 80 ? 'badge-green' : 'badge-orange'}`}>
+                                                                    {compPct}% {compLabel}
+                                                                </span>
+                                                                <span className="text-[10px] uppercase font-black tracking-widest text-text-muted opacity-50">
+                                                                    {currentItem.vendor || "Verified Source"}
+                                                                </span>
+                                                            </div>
+                                                            <h3 className="text-base font-extrabold text-white tracking-tight uppercase leading-tight">
+                                                                {selectedBlock?.blockTitle || "Product Review"}
+                                                            </h3>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={() => setExpandedPdfUrl(currentItem.cutsheetUrl)}
+                                                                className="btn-icon !w-9 !h-9 border-white/5 bg-white/5 hover:bg-white/10 transition-all"
+                                                                title="Expand Preview"
+                                                            >
+                                                                <Maximize size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Standardized Product Tabs (Matches Part 1/2/3 style) */}
+                                                    {items.length > 1 && (
+                                                        <div className="product-tab-grid">
+                                                            {items.map((item, idx) => (
+                                                                <div 
+                                                                    key={idx}
+                                                                    onClick={() => setActiveSubProductIndex(idx)}
+                                                                    className={`item-card prism-card !w-20 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-1.5 ${activeSubProductIndex === idx ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                                                                >
+                                                                    <h4 className="font-bold text-[8px] uppercase opacity-70">ITEM {idx + 1}</h4>
+                                                                    <span className="text-[8px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full">
+                                                                        {item.productType?.split(' ')[0] || "Select"}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Simplified Architect Reasoning */}
+                                                    <div className="architect-reasoning-block">
+                                                        <div className="label">Architect Reasoning</div>
+                                                        <p className="text-[11px] text-text-muted leading-relaxed font-medium italic">
+                                                            "{currentItem.complianceReason || "This product matches the base requirements for this section."}"
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="shrink-0 bg-bg-deeper border-b border-border-subtle shadow-inner custom-scrollbar overflow-y-auto" style={{ maxHeight: '180px' }}>
+                                                    <div className="px-4 py-2 flex justify-between items-center border-b border-white/5 opacity-80">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
+                                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-secondary">Extraction Proof</span>
+                                                        </div>
+                                                        <span className="text-[8px] font-mono text-text-muted opacity-50 uppercase tracking-tighter">Verified against master spec</span>
+                                                    </div>
+                                                    <div className="p-3 flex flex-wrap gap-1.5">
+                                                        {matched.map((r, i) => (
+                                                            <div 
+                                                                key={i} 
+                                                                className="proof-tag animate-fade-in"
+                                                                onMouseEnter={() => setHoveredRequirement(r)}
+                                                            >
+                                                                <CheckCircle2 size={10} />
+                                                                <span>{r}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex-1 relative bg-black/10 flex flex-col">
+                                                    {currentItem?.cutsheetUrl ? (
+                                                        <iframe 
+                                                            key={`${currentItem.cutsheetUrl}-${activeSubProductIndex}`}
+                                                            src={`${currentItem.cutsheetUrl}#navpanes=0&toolbar=0&view=Fit&page=${(hoveredRequirement && currentItem.highlights?.[hoveredRequirement]?.[0]?.pageIndex + 1) || 1}`} 
+                                                            className="w-full h-full border-none flex-1" 
+                                                            title="Cutsheet Preview"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                                                            <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                                                                <FileSearch size={32} className="text-text-muted" />
+                                                            </div>
+                                                            <h4 className="font-bold text-white uppercase tracking-tight">Direct PDF Not Found</h4>
+                                                            <p className="text-xs text-text-muted max-w-[200px] mt-2 italic leading-relaxed">
+                                                                Architect confirmed product match via web data, but a direct cutsheet link was not extracted.
+                                                            </p>
+                                                            {currentItem?.pdpUrl && (
+                                                                <a 
+                                                                    href={currentItem.pdpUrl} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="btn-secondary !py-2 !px-4 mt-6 scale-90 flex items-center gap-2"
+                                                                >
+                                                                    <ExternalLink size={14} />
+                                                                    View Vendor Page
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        )}
                     </div>
+                </div>
                 ) : (
-                    <div className="workbench-main prism-card flex flex-col items-center justify-center text-text-muted">
+                    <div className="workbench-main prism-card flex flex-col items-center justify-center text-text-muted h-full">
                         <FileSearch size={48} className="mb-4" />
-                        <h3 className="text-lg font-bold">Select a section to begin review</h3>
+                        <h3 className="text-lg font-bold">Select a specification section</h3>
+                        <p className="text-sm">Run the AI Shredder to extract data from the PDF</p>
                     </div>
                 )}
             </div>

@@ -402,11 +402,17 @@ app.get('/api/source', async (req, res) => {
     }
 });
 
+app.get('/api/health', (req, res) => {
+    res.json({ success: true, status: 'alive' });
+});
+
 // SPA fallback — return index.html for any non-API route (Express 5 syntax)
 if (fs.existsSync(FRONTEND_DIST)) {
     app.get('/{*path}', (req, res) => {
         if (!req.path.startsWith('/api')) {
             res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+        } else {
+            res.status(404).json({ error: `Route not found: ${req.path}` });
         }
     });
 }

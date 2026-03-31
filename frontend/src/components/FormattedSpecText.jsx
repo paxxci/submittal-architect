@@ -62,9 +62,9 @@ const FormattedSpecText = ({
                     >
                         <div className="mb-4">
                             {/* Block Header */}
-                            <div className="mb-5">
+                            <div className="mb-4">
                                 {blockLines.length > 0 && /^[1-3]\.[0-9]{2}/.test(blockLines[0].trim()) ? (
-                                    <div className={`indent-level-0 font-extrabold text-2xl uppercase tracking-wide leading-snug ${isGreen ? 'text-accent-secondary' : 'text-accent-primary'}`}>
+                                    <div className={`indent-level-0 font-extrabold text-[14px] uppercase tracking-wide leading-snug ${isGreen ? 'text-accent-secondary' : 'text-accent-primary'}`}>
                                         {blockLines[0].trim()}
                                     </div>
                                 ) : (
@@ -75,68 +75,64 @@ const FormattedSpecText = ({
                             </div>
                             
                             {/* Action Row */}
-                            <div className="flex items-center justify-between py-3 mb-4 border-b border-white/10">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <button 
-                                            type="button"
-                                            onClick={(e) => { 
-                                                e.preventDefault();
-                                                e.stopPropagation(); 
-                                                if (!isCompleted) {
-                                                    const blockEl = document.getElementById(`prism-block-${blockKey.replace(/[^a-zA-Z0-9]/g, '')}`);
-                                                    onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: blockEl ? blockEl.offsetTop : 0 });
-                                                    window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
-                                                        detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n'), aiBlockData } 
-                                                    })); 
-                                                }
-                                            }}
-                                            disabled={isCompleted}
-                                            className={`btn-secondary !py-2.5 !px-5 !h-auto flex items-center gap-2.5 group/btn transition-all ${isCompleted ? 'opacity-20 cursor-not-allowed saturate-0' : 'opacity-100 shadow-[0_0_15px_rgba(255,115,0,0.3)] hover:brightness-125 hover:-translate-y-0.5'}`}
-                                        >
-                                            <Box size={16} className={!isCompleted ? "group-hover/btn:rotate-12 transition-transform text-accent-primary" : "text-text-muted"} />
-                                            <span className="font-bold text-white tracking-widest text-[11px] uppercase whitespace-nowrap">Find Cutsheet</span>
-                                        </button>
-                                        <input 
-                                            type="file"
-                                            ref={fileInputRef}
-                                            className="hidden"
-                                            accept=".pdf"
-                                            onChange={(e) => {
-                                                const file = e.target.files[0];
-                                                if (file) {
-                                                    window.dispatchEvent(new CustomEvent('trigger-manual-upload', {
-                                                        detail: { blockId, blockKey, blockTitle, file }
-                                                    }));
-                                                }
-                                                e.target.value = '';
-                                            }}
-                                        />
-                                        <button 
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                if (!isCompleted) fileInputRef.current?.click();
-                                            }}
-                                            disabled={isCompleted}
-                                            className={`btn-secondary !py-2.5 !px-5 !h-auto flex items-center gap-2.5 transition-all ${isCompleted ? 'opacity-20 cursor-not-allowed saturate-0' : 'opacity-100 hover:bg-white/10'}`}
-                                        >
-                                            <FileUp size={16} className="text-accent-secondary" />
-                                            <span className="font-bold text-white tracking-widest text-[11px] uppercase whitespace-nowrap">Upload Manual</span>
-                                        </button>
-                                    </div>
-                                    <div className="w-[1px] h-8 bg-white/5 mx-1"></div>
-                                </div>
+                            <div className="grid grid-cols-3 gap-2 py-2 mb-4 border-b border-white/10 w-full items-center">
+                                <button 
+                                    type="button"
+                                    onClick={(e) => { 
+                                        e.preventDefault();
+                                        e.stopPropagation(); 
+                                        if (!isCompleted) {
+                                            const blockEl = document.getElementById(`prism-block-${blockKey.replace(/[^a-zA-Z0-9]/g, '')}`);
+                                            onBlockSelect && onBlockSelect({ blockKey, blockTitle, blockLines, blockIdx, offsetTop: blockEl ? blockEl.offsetTop : 0 });
+                                            window.dispatchEvent(new CustomEvent('trigger-sourcing', { 
+                                                detail: { blockId, blockKey, blockTitle, blockLines: blockLines.join('\n'), aiBlockData } 
+                                            })); 
+                                        }
+                                    }}
+                                    disabled={isCompleted}
+                                    className={`btn-secondary !py-2 !px-1 lg:!px-2 !h-auto flex items-center justify-center gap-1.5 lg:gap-2 group/btn transition-all flex-shrink w-full ${isCompleted ? 'opacity-20 cursor-not-allowed saturate-0' : 'opacity-100 shadow-[0_0_15px_rgba(255,115,0,0.3)] hover:brightness-125 hover:-translate-y-0.5'}`}
+                                >
+                                    <Box size={14} className={!isCompleted ? "group-hover/btn:rotate-12 transition-transform text-accent-primary flex-shrink-0" : "text-text-muted flex-shrink-0"} />
+                                    <span className="font-bold text-white tracking-widest sm:tracking-normal text-[8px] md:text-[9px] lg:text-[10px] uppercase whitespace-nowrap truncate text-center">Find Cutsheet</span>
+                                </button>
+                                
+                                <input 
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    accept=".pdf"
+                                    onChange={(e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                            window.dispatchEvent(new CustomEvent('trigger-manual-upload', {
+                                                detail: { blockId, blockKey, blockTitle, file }
+                                            }));
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (!isCompleted) fileInputRef.current?.click();
+                                    }}
+                                    disabled={isCompleted}
+                                    className={`btn-secondary !py-2 !px-1 lg:!px-2 !h-auto flex items-center justify-center gap-1.5 lg:gap-2 transition-all flex-shrink w-full ${isCompleted ? 'opacity-20 cursor-not-allowed saturate-0' : 'opacity-100 hover:bg-white/10'}`}
+                                >
+                                    <FileUp size={14} className="text-accent-secondary flex-shrink-0" />
+                                    <span className="font-bold text-white tracking-widest sm:tracking-normal text-[8px] md:text-[9px] lg:text-[10px] uppercase whitespace-nowrap truncate text-center">Upload Manual</span>
+                                </button>
 
                                 <button 
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); onToggleBlock(blockId, 'DONE'); }}
-                                    className={`btn-secondary !py-2.5 !px-5 !h-auto flex items-center gap-2.5 transition-all ${isCompleted ? 'bg-accent-secondary/20 border-accent-secondary text-accent-secondary shadow-[0_0_15px_rgba(0,255,163,0.3)]' : 'opacity-100 hover:bg-white/10'}`}
+                                    className={`btn-secondary !py-2 !px-1 lg:!px-2 !h-auto flex items-center justify-center gap-1.5 lg:gap-2 transition-all flex-shrink w-full ${isCompleted ? 'bg-accent-secondary/20 border-accent-secondary text-accent-secondary shadow-[0_0_15px_rgba(0,255,163,0.3)]' : 'opacity-100 hover:bg-white/10'}`}
                                 >
-                                    <CheckCircle2 size={16} className={isCompleted ? "text-accent-secondary drop-shadow-[0_0_5px_rgba(0,255,163,0.8)]" : "text-text-muted"} />
-                                    <span className={`font-bold tracking-widest text-[11px] uppercase whitespace-nowrap ${isCompleted ? 'text-accent-secondary' : 'text-white'}`}>
-                                        {isCompleted ? 'Marked Done' : 'Complete'}
+                                    <CheckCircle2 size={14} className={isCompleted ? "text-accent-secondary drop-shadow-[0_0_5px_rgba(0,255,163,0.8)] flex-shrink-0" : "text-text-muted flex-shrink-0"} />
+                                    <span className={`font-bold tracking-widest sm:tracking-normal text-[8px] md:text-[9px] lg:text-[10px] uppercase whitespace-nowrap truncate text-center ${isCompleted ? 'text-accent-secondary' : 'text-white'}`}>
+                                        {isCompleted ? 'Done' : 'Complete'}
                                     </span>
                                 </button>
                             </div>

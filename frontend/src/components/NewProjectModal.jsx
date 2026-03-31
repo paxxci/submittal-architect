@@ -32,7 +32,7 @@ const NewProjectModal = ({
                 <div className="modal-header">
                     <div>
                         <h2 style={{fontSize: '24px', fontWeight: 800, letterSpacing: '-0.5px'}}>New Submittal Project</h2>
-                        <p style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>Step {newProjectStep} of 4</p>
+                        <p style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>Step {newProjectStep} of 3</p>
                     </div>
                     <button onClick={onClose} style={{background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer'}}>
                         <Plus style={{transform: 'rotate(45deg)'}} size={24} />
@@ -204,46 +204,88 @@ const NewProjectModal = ({
                                         <div style={{textAlign: 'center', padding: '20px', color: 'var(--text-muted)'}}>No sections detected. You can still proceed or try another file.</div>
                                     ) : (
                                         <div style={{display: 'grid', gap: '8px'}}>
-                                            {discoveredSections.map((s) => {
-                                                const isSelected = selectedSectionsForParsing.has(s.id);
-                                                return (
-                                                    <div 
-                                                        key={s.id}
-                                                        className={`division-item ${isSelected ? 'selected' : ''}`}
-                                                        style={{
-                                                            padding: '12px 16px',
-                                                            opacity: s.isElectrical ? 1 : 0.8,
-                                                            background: isSelected ? 'rgba(255,115,0,0.08)' : 'var(--bg-deep)'
-                                                        }}
-                                                        onClick={() => {
-                                                            const newSelected = new Set(selectedSectionsForParsing);
-                                                            if (newSelected.has(s.id)) newSelected.delete(s.id);
-                                                            else newSelected.add(s.id);
-                                                            setSelectedSectionsForParsing(newSelected);
-                                                        }}
-                                                    >
-                                                        <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
-                                                            <div className="checkbox-box" style={{
-                                                                borderColor: isSelected ? 'var(--accent-primary)' : 'var(--text-muted)',
-                                                                background: isSelected ? 'var(--accent-primary)' : 'transparent'
-                                                            }}>
-                                                                {isSelected && <CheckCircle2 size={12} style={{color: 'white'}} />}
-                                                            </div>
-                                                            <div style={{flex: 1}}>
-                                                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                                                    <span style={{fontSize: '13px', fontWeight: 800, color: isSelected ? 'var(--accent-primary)' : 'white'}}>SECTION {s.number}</span>
-                                                                    {s.isElectrical && (
-                                                                        <span style={{fontSize: '9px', background: 'var(--accent-secondary)', color: '#111', padding: '1px 6px', borderRadius: '4px', fontWeight: 900}}>ELECTRICAL</span>
-                                                                    )}
+                                            {(() => {
+                                                const divMap = {};
+                                                discoveredSections.forEach(s => {
+                                                    const divId = s.number.replace(/\s/g, '').substring(0, 2);
+                                                    if (!divMap[divId]) {
+                                                        divMap[divId] = {
+                                                            id: divId,
+                                                            sections: [],
+                                                            isElectrical: ['26', '27', '28'].includes(divId)
+                                                        };
+                                                    }
+                                                    divMap[divId].sections.push(s);
+                                                });
+                                                const divisionsArray = Object.values(divMap).sort((a,b) => a.id.localeCompare(b.id));
+
+                                                return divisionsArray.map(div => {
+                                                    const allSelected = div.sections.every(s => selectedSectionsForParsing.has(s.id));
+                                                    return (
+                                                        <div 
+                                                            key={div.id}
+                                                            className={`division-item ${allSelected ? 'selected' : ''}`}
+                                                            style={{
+                                                                padding: '16px',
+                                                                opacity: div.isElectrical ? 1 : 0.8,
+                                                                background: allSelected ? 'rgba(255,115,0,0.08)' : 'var(--bg-deep)'
+                                                            }}
+                                                            onClick={() => {
+                                                                const newSelected = new Set(selectedSectionsForParsing);
+                                                                if (allSelected) {
+                                                                    div.sections.forEach(s => newSelected.delete(s.id));
+                                                                } else {
+                                                                    div.sections.forEach(s => newSelected.add(s.id));
+                                                                }
+                                                                setSelectedSectionsForParsing(newSelected);
+                                                            }}
+                                                        >
+                                                            <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
+                                                                <div className="checkbox-box" style={{
+                                                                    borderColor: allSelected ? 'var(--accent-primary)' : 'var(--text-muted)',
+                                                                    background: allSelected ? 'var(--accent-primary)' : 'transparent'
+                                                                }}>
+                                                                    {allSelected && <CheckCircle2 size={12} style={{color: 'white'}} />}
                                                                 </div>
-                                                                <div style={{fontSize: '12px', color: isSelected ? 'white' : 'var(--text-muted)', marginTop: '2px', fontWeight: 500}}>{s.title}</div>
+                                                                <div style={{flex: 1}}>
+                                                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                                                        <span style={{fontSize: '14px', fontWeight: 800, color: allSelected ? 'var(--accent-primary)' : 'white'}}>DIVISION {div.id}</span>
+                                                                        {div.isElectrical && (
+                                                                            <span style={{fontSize: '9px', background: 'var(--accent-secondary)', color: '#111', padding: '1px 6px', borderRadius: '4px', fontWeight: 900}}>ELECTRICAL</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div style={{fontSize: '12px', color: allSelected ? 'white' : 'var(--text-muted)', marginTop: '4px', fontWeight: 500}}>
+                                                                        {div.sections.length} Section{div.sections.length > 1 ? 's' : ''} Discovered
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                });
+                                            })()}
                                         </div>
                                     )}
+                                </div>
+
+                                <div 
+                                    className={`division-item ${newProjectData.autoDetect ? 'selected' : ''}`}
+                                    style={{
+                                        marginBottom: '16px', 
+                                        padding: '16px',
+                                        background: newProjectData.autoDetect ? 'rgba(0, 255, 163, 0.05)' : 'var(--bg-deep)', 
+                                        borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--border-subtle)'
+                                    }}
+                                    onClick={() => setNewProjectData({...newProjectData, autoDetect: !newProjectData.autoDetect})}
+                                >
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
+                                        <div className="checkbox-box" style={{borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--text-muted)', background: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'transparent', color: '#111'}}>
+                                            {newProjectData.autoDetect && <CheckCircle2 size={14} />}
+                                        </div>
+                                        <div>
+                                            <h4 style={{fontSize: '14px', fontWeight: 800, color: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'white'}}>Semantic Discovery (Recommended)</h4>
+                                            <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>Automatically scan unselected divisions for Electrical keywords (e.g. Div 16, Div 33, Div 40)</p>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="modal-actions between" style={{borderTop: '1px solid var(--border-subtle)', paddingTop: '16px'}}>
@@ -260,11 +302,12 @@ const NewProjectModal = ({
                                         </button>
                                         <button 
                                             className="btn-primary" 
-                                            onClick={() => setNewProjectStep(4)}
+                                            onClick={onStartShredding}
                                             disabled={selectedSectionsForParsing.size === 0}
                                             style={{opacity: selectedSectionsForParsing.size > 0 ? 1 : 0.5}}
                                         >
-                                            Confirm Selection ({selectedSectionsForParsing.size}) <ChevronRight size={16} style={{display: 'inline', marginLeft: '4px', verticalAlign: 'middle'}} />
+                                            <Search size={16} style={{display: 'inline', marginRight: '8px', verticalAlign: 'middle'}} />
+                                            Initialize AI Analysis
                                         </button>
                                     </div>
                                 </div>
@@ -273,70 +316,7 @@ const NewProjectModal = ({
                     </div>
                 )}
 
-                {/* Step 4: Final Review / Divisions Filter */}
-                {newProjectStep === 4 && (
-                    <div className="modal-step">
-                        <div style={{marginBottom: '16px'}}>
-                            <h3 style={{fontSize: '18px', fontWeight: 700}}>Final Review & Search Scope</h3>
-                            <p style={{fontSize: '14px', color: 'var(--text-muted)', marginTop: '4px'}}>Confirm target divisions for automated sourcing.</p>
-                        </div>
-                        
-                        <div 
-                            className={`division-item ${newProjectData.autoDetect ? 'selected' : ''}`}
-                            style={{marginBottom: '24px', background: newProjectData.autoDetect ? 'rgba(0, 255, 163, 0.05)' : 'var(--bg-deep)', borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--border-subtle)'}}
-                            onClick={() => setNewProjectData({...newProjectData, autoDetect: !newProjectData.autoDetect})}
-                        >
-                            <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
-                                <div className="checkbox-box" style={{borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--text-muted)', background: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'transparent', color: '#111'}}>
-                                    {newProjectData.autoDetect && <CheckCircle2 size={14} />}
-                                </div>
-                                <div>
-                                    <h4 style={{fontSize: '14px', fontWeight: 800, color: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'white'}}>Semantic Discovery (Recommended)</h4>
-                                    <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>Automatically scan unselected divisions for Electrical keywords (e.g. Div 16, Div 33, Div 40)</p>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div style={{borderTop: '1px solid var(--border-subtle)', paddingTop: '24px', marginBottom: '16px'}}>
-                            <h4 style={{fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '12px'}}>Target Divisions</h4>
-                            {[
-                                { id: '26', title: 'Electrical' },
-                                { id: '27', title: 'Communications' },
-                                { id: '28', title: 'Electronic Safety and Security' }
-                            ].map(divItem => (
-                                <div 
-                                    key={divItem.id}
-                                    className={`division-item ${newProjectData.divisions[divItem.id] ? 'selected' : ''}`}
-                                    onClick={() => setNewProjectData({
-                                        ...newProjectData, 
-                                        divisions: {...newProjectData.divisions, [divItem.id]: !newProjectData.divisions[divItem.id]}
-                                    })}
-                                >
-                                    <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
-                                        <div className="checkbox-box">
-                                            {newProjectData.divisions[divItem.id] && <CheckCircle2 size={14} />}
-                                        </div>
-                                        <div>
-                                            <h4 style={{fontSize: '14px', fontWeight: 700}}>Division {divItem.id}</h4>
-                                            <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>{divItem.title}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="modal-actions between">
-                            <button style={{fontSize: '14px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer'}} onClick={() => setNewProjectStep(3)}>Back</button>
-                            <button 
-                                className="btn-primary" 
-                                onClick={onStartShredding}
-                            >
-                                <Search size={16} style={{display: 'inline', marginRight: '8px', verticalAlign: 'middle'}} />
-                                Initialize AI Analysis
-                            </button>
-                        </div>
-                    </div>
-                )}
 
             </div>
         </div>

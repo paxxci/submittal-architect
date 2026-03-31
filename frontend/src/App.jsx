@@ -578,8 +578,27 @@ function App() {
                 } else if (data.reason === 'no_product') {
                     setSelectedBlock(prev => prev ? { ...prev, isRule: true } : prev);
                 } else {
-                    const reason = data.message || `No direct PDF match found for "${blockTitle || section.title}".`;
-                    alert(`Architect AI: ${reason}`);
+                    const reason = data.error || data.message || `No direct PDF match found for "${blockTitle || section.title}".`;
+                    const failedStub = {
+                        complianceScore: 0,
+                        productType: "Not Found",
+                        vendor: "Search Engine",
+                        complianceReason: reason,
+                        cutsheetUrl: null,
+                        matchedRequirements: []
+                    };
+                    
+                    const activeBlockKey = blockKey || blockTitle || blockId;
+                    setSelectedSpec(prev => ({
+                        ...prev,
+                        metadata: {
+                            ...prev?.metadata,
+                            sourcedBlocks: {
+                                ...(prev?.metadata?.sourcedBlocks || {}),
+                                [activeBlockKey]: failedStub
+                            }
+                        }
+                    }));
                 }
             } catch (err) {
                 console.error("Sourcing failed:", err);
@@ -1280,7 +1299,8 @@ function App() {
                 if (!newProjectData.pdfPath) {
                     throw new Error('No PDF uploaded. Please go back and upload your spec book.');
                 }
-                const res = await fetch(`http://localhost:3001/api/shred?projectId=${project.id}&pdfPath=${encodeURIComponent(newProjectData.pdfPath)}`)
+                const sectionsParam = selectedSectionsForParsing.size > 0 ? `&selectedSections=${Array.from(selectedSectionsForParsing).join(',')}` : '';
+                const res = await fetch(`http://localhost:3001/api/shred?projectId=${project.id}&pdfPath=${encodeURIComponent(newProjectData.pdfPath)}${sectionsParam}`)
                 const jobData = await res.json()
                 
                 if (jobData.success && jobData.jobId) {
@@ -1596,6 +1616,7 @@ function App() {
                             activeSubProductIndex={activeSubProductIndex}
                             setActiveSubProductIndex={setActiveSubProductIndex}
                             isSourcing={isSourcing}
+                            sourcingProgressPct={sourcingProgressPct}
                             isShredding={isShredding}
                             shredStatusMsg={shredStatusMsg}
                             shredProgress={shredProgress}
