@@ -16,9 +16,10 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
     const [tempNotes, setTempNotes] = useState("");
 
     const calculateSectionProgress = (section) => {
+        // In the future this will be calculated directly from part 1,2,3 cut sheet completion %
+        // For now, providing a baseline logic.
         let progress = 0;
-        if (section.tracker_status === 'Done') return 100;
-        if (section.tracker_status === 'Working') progress += 50;
+        if (section.responsibility === 'VENDOR' && section.full_submittal_url) return 100;
         if (section.tracker_notes && section.tracker_notes.length > 10) progress += 50;
         return Math.min(progress, 100);
     };
@@ -34,7 +35,7 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
             } else {
                 const { error } = await supabase
                     .from('spec_sections')
-                    .update({ [field === 'tracker_status' ? 'tracker_status' : 'tracker_notes']: value })
+                    .update({ [field]: value })
                     .eq('id', dbId);
 
                 if (error) {
@@ -50,171 +51,168 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Done': return 'bg-accent-secondary/20 text-accent-secondary border border-accent-secondary/50';
-            case 'Working': return 'bg-accent-primary/20 text-accent-primary border border-accent-primary/50';
-            case 'Revise & Resubmit': return 'bg-red-500/20 text-red-500 border border-red-500/50';
-            default: return 'bg-white/5 text-text-muted border border-white/10';
-        }
-    };
-
     return (
-        <div className="flex flex-col h-full w-full bg-[#0a0b0e] text-text-primary p-8 overflow-y-auto custom-scrollbar">
+        <div className="flex flex-col h-full w-full bg-[#0a0b0e] text-text-primary p-10 overflow-y-auto custom-scrollbar">
             
-            <div className="mb-8">
-                <h1 className="text-3xl font-extrabold tracking-tight mb-2">Submittal Tracker</h1>
-                <p className="text-text-muted">Master log for {activeProject?.name || 'Unknown Project'}. Changes here save instantly.</p>
+            {/* COMMAND CENTER HEADER */}
+            <div className="px-4" style={{ marginBottom: '1rem' }}>
+                <h1 
+                    className="text-4xl font-black tracking-tighter italic uppercase"
+                    style={{ marginBottom: '0px' }}
+                >
+                    SUBMITTAL <span className="text-accent-primary">TRACKER</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{activeProject?.name}</span>
+                </h1>
+                
+                <p className="text-text-muted font-black uppercase tracking-[0.3em] text-[11px] opacity-60">
+                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> OPERATIONAL MASTER LOG. REAL-TIME SYNCHRONIZATION ACTIVE.
+                </p>
             </div>
 
-            <div className="bg-[#111216] rounded-xl border border-white/5 overflow-hidden shadow-2xl relative">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-white/5 border-b border-white/10 text-xs uppercase tracking-widest font-bold text-text-muted">
-                            <th className="p-4 py-5 w-[20%]">Spec & Description</th>
-                            <th className="p-4 py-5 w-[15%]">Assigned To</th>
-                            <th className="p-4 py-5 w-[15%]">Progress</th>
-                            <th className="p-4 py-5 w-[15%]">Status</th>
-                            <th className="p-4 py-5 w-[25%]">Notes</th>
-                            <th className="p-4 py-5 w-[10%] text-center">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {sortedSections.map(section => {
-                            const progress = section.responsibility === 'VENDOR' && section.full_submittal_url ? 100 : calculateSectionProgress(section);
-                            
-                            return (
-                                <tr key={section.dbId} className="hover:bg-white/[0.02] transition-colors group">
-                                    
-                                    <td className="p-4 align-top">
+            {/* COMPACT COLUMN HEADERS */}
+            <div className="grid grid-cols-[2fr_1.5fr_1fr_2.5fr_0.5fr] items-center text-[10px] uppercase tracking-[0.4em] font-black text-white/30 italic mb-4 pb-4">
+                <div style={{ paddingLeft: '3.5rem', paddingRight: '2rem' }}>Identity</div>
+                <div style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>Responsibility</div>
+                <div style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>Coverage</div>
+                <div style={{ paddingLeft: '1rem', paddingRight: '1rem' }}>Notes</div>
+                <div className="text-center"></div>
+            </div>
+
+            <div className="space-y-6">
+                {/* Submittal Cards */}
+                {sortedSections.map(section => {
+                    const progress = calculateSectionProgress(section);
+                    
+                    return (
+                        <div 
+                            key={section.dbId} 
+                            className="prism-card !p-0 border-l-[6px] border-l-accent-primary bg-[#111216]/95 backdrop-blur-xl overflow-hidden group hover:border-accent-primary shadow-[0_15px_40px_rgba(0,0,0,0.5)] transition-all duration-300 hover:scale-[1.002]"
+                        >
+                            <div className="grid grid-cols-[2fr_1.5fr_1fr_2.5fr_0.5fr] items-stretch min-h-[120px]">
+                                
+                                {/* IDENTITY ZONE: ID + TITLE */}
+                                <div className="py-6 border-r border-white/5 flex flex-col justify-center" style={{ paddingLeft: '3.5rem', paddingRight: '2rem' }}>
+                                    <div>
                                         <div 
-                                            className="font-bold text-accent-primary cursor-pointer hover:underline flex items-center gap-1"
+                                            className="font-black text-lg text-accent-primary cursor-pointer hover:underline inline-block italic uppercase tracking-tighter mb-1"
                                             onClick={() => onNavigateToSection(section)}
                                         >
                                             {section.id}
                                         </div>
-                                        <div className="text-xs text-text-muted mt-1 leading-relaxed pr-4">
+                                        <div className="text-[11px] font-black text-white/90 uppercase leading-relaxed tracking-tight pr-4">
                                             {section.title}
                                         </div>
-                                    </td>
+                                    </div>
+                                </div>
 
-                                    <td className="p-4 align-top min-w-[160px]">
+                                {/* RESPONSIBILITY ZONE */}
+                                <div className="py-6 border-r border-white/5 flex flex-col justify-center space-y-6" style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>
+                                    <div className="flex flex-col gap-3">
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-text-muted opacity-40">Owner</span>
                                         <div className="flex flex-col gap-2">
-                                            <select 
-                                                className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-white focus:outline-none focus:border-accent-primary"
-                                                value={section.responsibility || 'SELF'}
-                                                onChange={(e) => {
-                                                    const val = e.target.value;
-                                                    handleUpdateField(section.dbId, 'responsibility', val);
-                                                    if (val === 'SELF' || val === 'NA') {
-                                                        handleUpdateField(section.dbId, 'assigned_to', null);
-                                                    }
-                                                }}
-                                            >
-                                                <option value="SELF" className="bg-[#111216]">Self-Perform</option>
-                                                <option value="VENDOR" className="bg-[#111216]">Vendor-Managed</option>
-                                                <option value="NA" className="bg-[#111216]">Not Applicable</option>
-                                            </select>
-
-                                            {/* Secondary Vendor Selection (Only if VENDOR is selected) */}
-                                            {section.responsibility === 'VENDOR' && (
-                                                <select 
-                                                    className="w-full bg-accent-primary/10 border border-accent-primary/20 rounded px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-accent-primary focus:outline-none"
-                                                    value={section.assigned_to || ''}
-                                                    onChange={(e) => handleUpdateField(section.dbId, 'assigned_to', e.target.value)}
-                                                >
-                                                    <option value="" className="bg-[#111216]">Choose Vendor...</option>
-                                                    {(activeProject?.metadata?.sourcing_prefs?.authorizedVendors || []).map(vendor => (
-                                                        <option key={vendor} value={vendor} className="bg-[#111216]">{vendor}</option>
-                                                    ))}
-                                                </select>
-                                            )}
+                                            {[
+                                                { id: 'SELF', label: 'Self-Perform' },
+                                                { id: 'VENDOR', label: 'Vendor-Managed' },
+                                                { id: 'NA', label: 'Not Applicable' }
+                                            ].map(opt => {
+                                                const isSelected = (section.responsibility || 'SELF') === opt.id;
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        onClick={() => {
+                                                            if (!isSelected) {
+                                                                handleUpdateField(section.dbId, 'responsibility', opt.id);
+                                                                if (opt.id === 'SELF' || opt.id === 'NA') {
+                                                                    handleUpdateField(section.dbId, 'assigned_to', null);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className={`text-left w-full text-[10px] font-black uppercase tracking-[0.1em] px-3 py-2 rounded-lg transition-all border ${isSelected ? 'bg-accent-primary/10 border-accent-primary text-accent-primary shadow-[0_0_10px_rgba(var(--accent-primary-rgb,0,229,255),0.1)]' : 'border-transparent text-text-muted opacity-50 hover:opacity-100 hover:bg-white/5'}`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
-                                    </td>
+                                    </div>
 
-                                    {/* Progress Bar */}
-                                    <td className="p-4 align-top pt-6">
-                                        <div className="flex items-center gap-3 w-full max-w-[120px]">
-                                            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full transition-all duration-500 ${progress === 100 ? 'bg-accent-secondary' : 'bg-accent-primary'}`} 
-                                                    style={{ width: `${progress}%` }}
-                                                ></div>
-                                            </div>
-                                            <span className={`text-xs font-bold w-8 text-right ${progress === 100 ? 'text-accent-secondary' : 'text-text-muted'}`}>
+                                    {section.responsibility === 'VENDOR' && (
+                                        <div className="flex flex-col gap-2 animate-fade-in border-t border-white/5 pt-4">
+                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-primary opacity-60">Vendor Assignment</span>
+                                            <select 
+                                                className="bg-[#0a0b0e] border border-white/10 rounded-lg px-2 py-2 text-[10px] font-black text-accent-primary uppercase tracking-[0.1em] focus:outline-none focus:border-accent-primary cursor-pointer w-full transition-colors"
+                                                value={section.assigned_to || ''}
+                                                onChange={(e) => handleUpdateField(section.dbId, 'assigned_to', e.target.value)}
+                                            >
+                                                <option value="">Awaiting Vendor...</option>
+                                                {(activeProject?.metadata?.sourcing_prefs?.authorizedVendors || []).map(vendor => (
+                                                    <option key={vendor} value={vendor}>{vendor}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* PERFORMANCE ZONE: COVERAGE METRICS */}
+                                <div className="py-6 border-r border-white/5 flex flex-col justify-center" style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>
+                                    <div className="w-full max-w-[120px] space-y-3">
+                                        <div className="flex items-end justify-start gap-2">
+                                            <span className={`text-2xl font-black italic lnr ${progress === 100 ? 'text-accent-secondary' : progress > 0 ? 'text-white' : 'text-white/20'}`}>
                                                 {progress}%
                                             </span>
                                         </div>
-                                    </td>
+                                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden w-full">
+                                            <div 
+                                                className={`h-full transition-all duration-1000 ${progress === 100 ? 'bg-accent-secondary shadow-[0_0_15px_rgba(0,255,163,0.5)]' : 'bg-accent-primary'}`} 
+                                                style={{ width: `${progress}%` }}
+                                            ></div>
+                                        </div>
+                                        <div className="text-[8px] font-black uppercase tracking-[0.2em] text-text-muted opacity-40 text-left">
+                                            {progress === 0 ? 'Not Started' : progress === 100 ? 'Complete' : 'In Progress'}
+                                        </div>
+                                    </div>
+                                </div>
 
-                                    {/* Status Indicator */}
-                                    <td className="p-4 align-top">
-                                        <select 
-                                            value={section.tracker_status || 'Not Started'}
-                                            onChange={(e) => handleUpdateField(section.dbId, 'tracker_status', e.target.value)}
-                                            className={`appearance-none text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-full outline-none cursor-pointer transition-colors ${getStatusColor(section.tracker_status || 'Not Started')}`}
-                                            autoFocus={false}
-                                        >
-                                            <option value="Not Started" className="bg-[#111216] text-white">Not Started</option>
-                                            <option value="Working" className="bg-[#111216] text-white">Working</option>
-                                            <option value="Done" className="bg-[#111216] text-white">Done</option>
-                                            <option value="Revise & Resubmit" className="bg-[#111216] text-white">Revise & Resubmit</option>
-                                        </select>
-                                    </td>
-
-                                    {/* Inline Notes */}
-                                    <td className="p-4 align-top group/notes relative cursor-text" onClick={() => {
-                                        if (editingNotes !== section.dbId) {
+                                {/* INTELLIGENCE ZONE: NOTES */}
+                                <div className="relative flex border-r border-white/5 h-full w-full">
+                                    <textarea 
+                                        className="w-full h-full bg-white/[0.015] hover:bg-white/[0.03] border-transparent focus:bg-white/[0.05] outline-none text-[12px] text-white/90 custom-scrollbar resize-none font-medium leading-relaxed transition-all"
+                                        style={{ padding: '1rem' }}
+                                        placeholder="Notes"
+                                        value={editingNotes === section.dbId ? tempNotes : (section.tracker_notes || '')}
+                                        onFocus={() => {
                                             setEditingNotes(section.dbId);
                                             setTempNotes(section.tracker_notes || '');
-                                        }
-                                    }}>
-                                        {editingNotes === section.dbId ? (
-                                            <div className="relative">
-                                                <textarea 
-                                                    autoFocus
-                                                    className="w-full min-h-[80px] bg-black/40 border border-accent-primary/50 outline-none rounded p-2 text-xs text-text-primary custom-scrollbar resize-y"
-                                                    value={tempNotes}
-                                                    onChange={(e) => setTempNotes(e.target.value)}
-                                                    onBlur={() => {
-                                                        handleUpdateField(section.dbId, 'tracker_notes', tempNotes);
-                                                        setEditingNotes(null);
-                                                    }}
-                                                />
-                                                <div className="absolute right-2 bottom-2 text-[10px] text-accent-primary font-bold bg-black/60 px-2 py-0.5 rounded pointer-events-none">
-                                                    Enter to save
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className={`text-xs leading-relaxed min-h-[40px] p-2 rounded transition-colors ${section.tracker_notes ? 'text-text-primary' : 'text-text-muted/50 italic'} group-hover/notes:bg-white/5`}>
-                                                {section.tracker_notes || "Click to add notes..."}
-                                            </div>
-                                        )}
-                                    </td>
+                                        }}
+                                        onChange={(e) => setTempNotes(e.target.value)}
+                                        onBlur={() => {
+                                            handleUpdateField(section.dbId, 'tracker_notes', tempNotes);
+                                            setEditingNotes(null);
+                                        }}
+                                    />
+                                </div>
 
-                                    {/* Action Column */}
-                                    <td className="p-4 align-top text-center pt-5">
-                                        <button 
-                                            onClick={() => onNavigateToSection(section)}
-                                            className="inline-flex items-center justify-center p-2 rounded-full hover:bg-white/10 text-text-muted hover:text-white transition-colors"
-                                            title="Open in Workbench"
-                                        >
-                                            <ChevronRight size={18} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
+                                {/* ACTION ZONE: NAVIGATION */}
+                                <div className="px-8 flex items-center justify-center">
+                                    <button 
+                                        onClick={() => onNavigateToSection(section)}
+                                        className="inline-flex items-center justify-center text-white/20 hover:text-accent-primary transition-all duration-500 group/btn"
+                                        title="Navigate to Blueprint"
+                                    >
+                                        <ChevronRight size={32} className="group-hover/btn:translate-x-2 transition-transform" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
 
-                        {sortedSections.length === 0 && (
-                            <tr>
-                                <td colSpan={6} className="p-12 text-center text-text-muted">
-                                    No specification sections found for this project.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                {sortedSections.length === 0 && (
+                    <div className="prism-card p-24 text-center bg-[#111216]/50 border-dashed border-2 border-white/5 rounded-[40px]">
+                        <div className="text-text-muted font-black uppercase tracking-[0.8em] text-sm opacity-20">
+                            No Active Submittals
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
