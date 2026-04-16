@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     CheckCircle2, Clock, Zap, FileText, 
-    ExternalLink, Search, Plus, Trash2,
+    ExternalLink, Search, Plus, Trash,
     Loader2, AlertCircle, ChevronRight, ShieldCheck,
     Box, FileUp, FileSearch, Maximize, X, LayoutDashboard
 } from 'lucide-react';
@@ -37,6 +37,17 @@ const WorkbenchView = ({
 }) => {
     const [pdfAlignmentOffset, setPdfAlignmentOffset] = useState(0);
     const [hoveredRequirement, setHoveredRequirement] = useState(null);
+
+    const getCalculatedResponsibility = (specId) => {
+        if (sectionResponsibility[specId]) return sectionResponsibility[specId];
+        
+        const assignments = activeProject?.metadata?.vendor_assignments || {};
+        for (const [vendor, specs] of Object.entries(assignments)) {
+            if (specs.includes(specId)) return 'VENDOR';
+        }
+
+        return 'SELF';
+    };
 
     if (!selectedDivision) return (
         <div className="workbench-root animate-fade-in flex items-center justify-center">
@@ -75,7 +86,7 @@ const WorkbenchView = ({
                 <button className="btn-icon" onClick={() => setView('dashboard')}><LayoutDashboard size={20} /></button>
                 <div>
                     <h2 className="text-xl font-extrabold">{projectData?.name}</h2>
-                    <p className="text-xs text-text-muted">Division {selectedDivision?.id} - {selectedDivision?.title} Workbench</p>
+                    <p className="text-xs text-text-muted">Division {selectedDivision?.id} - {selectedDivision?.title} Cut Sheet Finder</p>
                 </div>
             </div>
 
@@ -158,7 +169,7 @@ const WorkbenchView = ({
                                     <select 
                                         className="w-full bg-bg-deep border border-border-subtle rounded-md px-2 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-accent-primary outline-none cursor-pointer transition-all hover:border-accent-primary/30 appearance-none"
                                         style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em' }}
-                                        value={sectionResponsibility[item.id] || 'SELF'}
+                                        value={getCalculatedResponsibility(item.id)}
                                         onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => {
                                             e.stopPropagation();
@@ -211,7 +222,7 @@ const WorkbenchView = ({
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-8 flex-1 w-full pb-32">
-                        {(sectionResponsibility[selectedSpec?.id] || 'SELF') === 'NA' ? (
+                        {getCalculatedResponsibility(selectedSpec?.id) === 'NA' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center p-20 opacity-50 grayscale animate-fade-in">
                                 <div className="p-8 rounded-full border-2 border-dashed border-border-subtle mb-4 shadow-[0_0_50px_rgba(255,107,0,0.05)]">
                                     <ShieldCheck size={48} className="text-text-muted" />
@@ -225,7 +236,7 @@ const WorkbenchView = ({
                                     Include Section
                                 </button>
                             </div>
-                        ) : (sectionResponsibility[selectedSpec?.id] || 'SELF') === 'VENDOR' ? (
+                        ) : getCalculatedResponsibility(selectedSpec?.id) === 'VENDOR' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center p-20 animate-fade-in">
                                 <div className="prism-card border-dashed border-accent-secondary/30 p-12 text-center max-w-lg w-full bg-accent-secondary/5 shadow-[0_0_50px_rgba(0,255,163,0.05)]">
                                     <div className="w-16 h-16 bg-accent-secondary/10 rounded-full flex items-center justify-center mx-auto mb-6">

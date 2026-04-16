@@ -71,8 +71,8 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
             {/* COMPACT COLUMN HEADERS */}
             <div className="grid grid-cols-[2fr_1.5fr_1fr_2.5fr_0.5fr] items-center text-[10px] uppercase tracking-[0.4em] font-black text-white/30 italic mb-4 pb-4">
                 <div style={{ paddingLeft: '3.5rem', paddingRight: '2rem' }}>Identity</div>
-                <div style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>Responsibility</div>
-                <div style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>Coverage</div>
+                <div className="text-center">Responsibility</div>
+                <div className="text-center">Coverage</div>
                 <div style={{ paddingLeft: '1rem', paddingRight: '1rem' }}>Notes</div>
                 <div className="text-center"></div>
             </div>
@@ -105,57 +105,37 @@ const TrackerView = ({ projectData, activeProject, onNavigateToSection, onUpdate
                                 </div>
 
                                 {/* RESPONSIBILITY ZONE */}
-                                <div className="py-6 border-r border-white/5 flex flex-col justify-center space-y-6" style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>
+                                <div className="py-6 border-r border-white/5 flex flex-col justify-center items-center text-center px-4">
                                     <div className="flex flex-col gap-3">
-                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-text-muted opacity-40">Owner</span>
-                                        <div className="flex flex-col gap-2">
-                                            {[
-                                                { id: 'SELF', label: 'Self-Perform' },
-                                                { id: 'VENDOR', label: 'Vendor-Managed' },
-                                                { id: 'NA', label: 'Not Applicable' }
-                                            ].map(opt => {
-                                                const isSelected = (section.responsibility || 'SELF') === opt.id;
-                                                return (
-                                                    <button
-                                                        key={opt.id}
-                                                        onClick={() => {
-                                                            if (!isSelected) {
-                                                                handleUpdateField(section.dbId, 'responsibility', opt.id);
-                                                                if (opt.id === 'SELF' || opt.id === 'NA') {
-                                                                    handleUpdateField(section.dbId, 'assigned_to', null);
-                                                                }
-                                                            }
-                                                        }}
-                                                        className={`text-left w-full text-[10px] font-black uppercase tracking-[0.1em] px-3 py-2 rounded-lg transition-all border ${isSelected ? 'bg-accent-primary/10 border-accent-primary text-accent-primary shadow-[0_0_10px_rgba(var(--accent-primary-rgb,0,229,255),0.1)]' : 'border-transparent text-text-muted opacity-50 hover:opacity-100 hover:bg-white/5'}`}
-                                                    >
-                                                        {opt.label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                                        
+                                        
+                                        {(() => {
+                                            const assignments = activeProject?.metadata?.vendor_assignments || {};
+                                            let assignedVendor = null;
+                                            for (const [vendor, specs] of Object.entries(assignments)) {
+                                                if (specs.includes(section.id)) {
+                                                    assignedVendor = vendor;
+                                                    break;
+                                                }
+                                            }
 
-                                    {section.responsibility === 'VENDOR' && (
-                                        <div className="flex flex-col gap-2 animate-fade-in border-t border-white/5 pt-4">
-                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-primary opacity-60">Vendor Assignment</span>
-                                            <select 
-                                                className="bg-[#0a0b0e] border border-white/10 rounded-lg px-2 py-2 text-[10px] font-black text-accent-primary uppercase tracking-[0.1em] focus:outline-none focus:border-accent-primary cursor-pointer w-full transition-colors"
-                                                value={section.assigned_to || ''}
-                                                onChange={(e) => handleUpdateField(section.dbId, 'assigned_to', e.target.value)}
-                                            >
-                                                <option value="">Awaiting Vendor...</option>
-                                                {(activeProject?.metadata?.sourcing_prefs?.authorizedVendors || []).map(vendor => (
-                                                    <option key={vendor} value={vendor}>{vendor}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
+                                            return (
+                                                <div className={`text-[11px] font-black uppercase tracking-widest transition-all ${
+                                                    assignedVendor 
+                                                    ? 'text-accent-secondary' 
+                                                    : 'text-white/40 italic'
+                                                }`}>
+                                                    {assignedVendor ? assignedVendor : 'SELF-PERFORM'}
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
 
                                 {/* PERFORMANCE ZONE: COVERAGE METRICS */}
-                                <div className="py-6 border-r border-white/5 flex flex-col justify-center" style={{ paddingLeft: '2rem', paddingRight: '2rem' }}>
+                                <div className="py-6 border-r border-white/5 flex flex-col justify-center items-center text-center px-4">
                                     <div className="w-full max-w-[120px] space-y-3">
-                                        <div className="flex items-end justify-start gap-2">
+                                        <div className="flex items-center justify-center gap-2">
                                             <span className={`text-2xl font-black italic lnr ${progress === 100 ? 'text-accent-secondary' : progress > 0 ? 'text-white' : 'text-white/20'}`}>
                                                 {progress}%
                                             </span>

@@ -6,12 +6,12 @@ import {
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
     FileText, ExternalLink, Briefcase, Building2, Trash, Maximize, X, Globe,
-    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone
+    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone, Edit2, Layers
 } from 'lucide-react'
 import { supabase } from './supabase'
-import ReactDOM from 'react-dom'
 import NewProjectModal from './components/NewProjectModal';
 import WorkbenchView from './components/WorkbenchView';
+import AssemblyEngineView from './components/AssemblyEngineView';
 import FormattedSpecText from './components/FormattedSpecText';
 import TrackerView from './TrackerView';
 import ErrorBoundary from './ErrorBoundary';
@@ -135,7 +135,10 @@ function App() {
         email: 'admin@submittalarch.com',
         website: 'www.submittalarchitect.com'
     });
+    const [isEditingCompanyInfo, setIsEditingCompanyInfo] = useState(false);
+    const [editingPMId, setEditingPMId] = useState(null);
     const [isAddingPM, setIsAddingPM] = useState(false);
+    const [newPM, setNewPM] = useState({ name: '', email: '', phone: '' });
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
     const handleUpdateProjectAdmin = async (updates) => {
@@ -786,6 +789,39 @@ function App() {
         if (error) console.error("Error saving company info:", error);
     };
 
+    const handleUpdatePM = async (id, field, value) => {
+        setProjectManagers(prev => prev.map(pm => pm.id === id ? { ...pm, [field]: value } : pm));
+        const { error } = await supabase
+            .from('project_managers')
+            .update({ [field]: value })
+            .eq('id', id);
+        if (error) console.error("Error updating PM:", error);
+    };
+
+    const handleDeletePM = async (id) => {
+        setProjectManagers(prev => prev.filter(pm => pm.id !== id));
+        const { error } = await supabase
+            .from('project_managers')
+            .delete()
+            .eq('id', id);
+        if (error) console.error("Error deleting PM:", error);
+    };
+
+    const handleAddPM = async () => {
+        if (!newPM.name) return;
+        const { data, error } = await supabase
+            .from('project_managers')
+            .insert([newPM])
+            .select();
+        
+        if (data && data.length > 0) {
+            setProjectManagers(prev => [...prev, data[0]]);
+            setNewPM({ name: '', email: '', phone: '' });
+            setIsAddingPM(false);
+        }
+        if (error) console.error("Error adding PM:", error);
+    };
+
     const handleUploadTemplate = async (file) => {
         const mockUrl = URL.createObjectURL(file);
         const { data, error } = await supabase
@@ -869,77 +905,179 @@ function App() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-8">
-                    <div className="col-span-12 lg:col-span-7 space-y-8">
-                        <div className="prism-card p-8 border-white/5 bg-bg-surface/30 shadow-2xl">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-accent-primary mb-8 flex items-center gap-3">
-                                <Building2 size={14} /> Corporate Identity
-                            </h3>
+                <div className="space-y-12">
+                        <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl">
+                            <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
+                                <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginTop: '16px' }}>
+                                    <Building2 size={24} /> Corporate Identity
+                                </h3>
+                                <button 
+                                    className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted hover:text-white transition-colors flex items-center gap-2"
+                                    onClick={() => setIsEditingCompanyInfo(!isEditingCompanyInfo)}
+                                >
+                                    {isEditingCompanyInfo ? 'Save' : <><Edit2 size={12} /> Edit</>}
+                                </button>
+                            </div>
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="col-span-2">
-                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Company Name</label>
-                                    <input type="text" className="prism-input w-full" value={companyInfo.name} onChange={(e) => handleUpdateCompanyInfo({ name: e.target.value })} />
+                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Company Name</label>
+                                    {isEditingCompanyInfo ? (
+                                        <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={companyInfo.name} onChange={(e) => handleUpdateCompanyInfo({ name: e.target.value })} />
+                                    ) : (
+                                        <div className="text-xl font-bold text-white">{companyInfo.name || "—"}</div>
+                                    )}
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Office Address</label>
-                                    <input type="text" className="prism-input w-full" value={companyInfo.address} onChange={(e) => handleUpdateCompanyInfo({ address: e.target.value })} />
+                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Office Address</label>
+                                    {isEditingCompanyInfo ? (
+                                        <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={companyInfo.address} onChange={(e) => handleUpdateCompanyInfo({ address: e.target.value })} />
+                                    ) : (
+                                        <div className="text-sm font-medium text-white/80">{companyInfo.address || "—"}</div>
+                                    )}
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Contact Email</label>
-                                    <input type="text" className="prism-input w-full" value={companyInfo.email} onChange={(e) => handleUpdateCompanyInfo({ email: e.target.value })} />
+                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Contact Email</label>
+                                    {isEditingCompanyInfo ? (
+                                        <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={companyInfo.email} onChange={(e) => handleUpdateCompanyInfo({ email: e.target.value })} />
+                                    ) : (
+                                        <div className="text-sm font-medium text-white/80">{companyInfo.email || "—"}</div>
+                                    )}
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-2">Phone</label>
-                                    <input type="text" className="prism-input w-full" value={companyInfo.phone} onChange={(e) => handleUpdateCompanyInfo({ phone: e.target.value })} />
+                                    <label className="text-[10px] font-black uppercase text-accent-primary tracking-widest block mb-2">Phone</label>
+                                    {isEditingCompanyInfo ? (
+                                        <input type="text" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={companyInfo.phone} onChange={(e) => handleUpdateCompanyInfo({ phone: e.target.value })} />
+                                    ) : (
+                                        <div className="text-sm font-medium text-white/80">{companyInfo.phone || "—"}</div>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="prism-card p-1 overflow-hidden group border-accent-secondary/10 shadow-2xl">
-                            <div className="p-8">
-                                <div className="flex justify-between items-center mb-8">
-                                    <h3 className="text-xl font-black flex items-center gap-4 uppercase italic">
-                                        Team Directory
-                                    </h3>
-                                    <button onClick={() => setIsAddingPM(true)} className="btn-primary !text-[10px] !py-2.5 !px-5 uppercase tracking-widest font-black">
-                                        <Plus size={14} className="mr-2" /> Add Manager
-                                    </button>
-                                </div>
+                        <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl">
+                            <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
+                                <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginTop: '16px' }}>
+                                    <Users size={24} /> Team Directory
+                                </h3>
+                                
+                                <button 
+                                    onClick={() => setIsAddingPM(true)} 
+                                    className="btn-primary !text-[9px] !py-2 !px-4 uppercase tracking-[0.2em] font-black flex items-center gap-2"
+                                >
+                                    <Plus size={12} /> Add Manager
+                                </button>
+                            </div>
 
-                                <div className="grid grid-cols-1 gap-4">
-                                    {projectManagers.map(pm => (
-                                        <div key={pm.id} className="p-5 bg-white/[0.03] border border-white/5 rounded-2xl hover:border-accent-primary/40 transition-all group">
-                                            <div className="flex items-center gap-4 mb-4">
-                                                <div className="w-10 h-10 rounded-xl bg-accent-primary/20 flex items-center justify-center font-black text-accent-primary text-lg">
-                                                    {pm.name.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <div className="font-black text-sm italic uppercase">{pm.name}</div>
-                                                    <div className="text-[9px] font-black uppercase tracking-widest text-text-muted">Project Manager</div>
-                                                </div>
+                            <div className="flex flex-col border border-white/5 rounded-xl overflow-hidden bg-bg-deep/50">
+                                {isAddingPM && (
+                                    <div className="group relative border-b border-accent-primary/20 bg-accent-primary/5 transition-colors flex items-center justify-between gap-6" style={{ paddingTop: '24px', paddingBottom: '24px', paddingLeft: '32px', paddingRight: '32px' }}>
+                                        <div className="flex items-center gap-5 sm:min-w-[200px]">
+                                             <div className="w-12 h-12 rounded-xl bg-accent-primary/20 border border-accent-primary/50 flex items-center justify-center font-black text-xl text-accent-primary shadow-inner shrink-0">
+                                                 +
+                                             </div>
+                                             <div className="flex-1">
+                                                 <div className="text-[9px] font-black uppercase text-accent-primary tracking-widest mb-1.5">New Project Manager</div>
+                                                 <input type="text" placeholder="Name..." className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-sm font-bold text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={newPM.name} onChange={(e) => setNewPM({...newPM, name: e.target.value})} />
+                                             </div>
+                                        </div>
+                                        <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                             <div>
+                                                 <div className="text-[9px] font-black uppercase text-text-muted tracking-widest mb-1.5 flex items-center gap-2"><Mail size={10} className="text-accent-primary"/> Email</div>
+                                                 <input type="text" placeholder="Email..." className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={newPM.email} onChange={(e) => setNewPM({...newPM, email: e.target.value})} />
+                                             </div>
+                                             <div>
+                                                 <div className="text-[9px] font-black uppercase text-text-muted tracking-widest mb-1.5 flex items-center gap-2"><Phone size={10} className="text-accent-primary"/> Phone</div>
+                                                 <input type="text" placeholder="Phone..." className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={newPM.phone} onChange={(e) => setNewPM({...newPM, phone: e.target.value})} />
+                                             </div>
+                                        </div>
+                                        <div className="pl-4 border-l border-white/5 flex flex-col gap-2 shrink-0 text-center items-start">
+                                            <button 
+                                                className="text-[10px] font-black uppercase tracking-[0.2em] text-accent-primary hover:text-white transition-colors flex items-center gap-2 py-1"
+                                                onClick={handleAddPM}
+                                            >
+                                                Save
+                                            </button>
+                                            <button 
+                                                className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted hover:text-red-400 transition-colors flex items-center gap-2 py-1"
+                                                onClick={() => { setIsAddingPM(false); setNewPM({ name: '', email: '', phone: '' }); }}
+                                            >
+                                                <X size={12} /> Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                {projectManagers.length === 0 && !isAddingPM && (
+                                    <div className="p-8 text-center text-text-muted text-sm italic">No managers assigned.</div>
+                                )}
+                                {projectManagers.map(pm => (
+                                    <div key={pm.id} className="group relative border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors flex items-center justify-between gap-6" style={{ paddingTop: '24px', paddingBottom: '24px', paddingLeft: '32px', paddingRight: '32px' }}>
+                                        
+                                        {/* Avatar & Identity */}
+                                        <div className="flex items-center gap-5 sm:min-w-[200px]">
+                                            <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-xl text-white shadow-inner shrink-0 group-hover:border-accent-primary/50 group-hover:text-accent-primary transition-colors">
+                                                {pm.name.charAt(0)}
                                             </div>
-                                            <div className="text-[11px] font-bold text-text-muted flex flex-col gap-1">
-                                                <div className="flex items-center gap-2"><Mail size={12} className="opacity-40" /> {pm.email}</div>
-                                                <div className="flex items-center gap-2"><Phone size={12} className="opacity-40" /> {pm.phone}</div>
+                                            <div>
+                                                <div className="text-[9px] font-black uppercase text-accent-primary tracking-widest mb-1.5">Project Manager</div>
+                                                {editingPMId === pm.id ? (
+                                                    <input type="text" className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-sm font-bold text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={pm.name} onChange={(e) => handleUpdatePM(pm.id, 'name', e.target.value)} />
+                                                ) : (
+                                                    <div className="text-lg font-bold text-white tracking-tight leading-none">{pm.name}</div>
+                                                )}
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+
+                                        {/* Contact Grid */}
+                                        <div className="flex-1 grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                            <div>
+                                                <div className="text-[9px] font-black uppercase text-text-muted tracking-widest mb-1.5 flex items-center gap-2"><Mail size={10} className="text-accent-primary"/> Email</div>
+                                                {editingPMId === pm.id ? (
+                                                    <input type="text" className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={pm.email} onChange={(e) => handleUpdatePM(pm.id, 'email', e.target.value)} />
+                                                ) : (
+                                                    <div className="text-sm font-medium text-white/80">{pm.email || '—'}</div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] font-black uppercase text-text-muted tracking-widest mb-1.5 flex items-center gap-2"><Phone size={10} className="text-accent-primary"/> Phone</div>
+                                                {editingPMId === pm.id ? (
+                                                    <input type="text" className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all" value={pm.phone} onChange={(e) => handleUpdatePM(pm.id, 'phone', e.target.value)} />
+                                                ) : (
+                                                    <div className="text-sm font-medium text-white/80">{pm.phone || '—'}</div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Actions */}
+                                        <div className="pl-4 border-l border-white/5 flex flex-col gap-2 shrink-0">
+                                            <button 
+                                                className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted hover:text-white transition-colors flex items-center gap-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                onClick={() => setEditingPMId(editingPMId === pm.id ? null : pm.id)}
+                                                style={{ opacity: editingPMId === pm.id ? 1 : undefined }}
+                                            >
+                                                {editingPMId === pm.id ? 'Save' : <><Edit2 size={12} /> Edit</>}
+                                            </button>
+                                            <button 
+                                                className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted hover:text-red-400 transition-colors flex items-center gap-2 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                onClick={() => handleDeletePM(pm.id)}
+                                            >
+                                                <Trash size={12} /> Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                    </div>
 
-                    <div className="col-span-12 lg:col-span-5 space-y-8">
-                        <div className="prism-card p-8 border-accent-secondary/20 shadow-2xl relative overflow-hidden group">
+                        <div className="prism-card p-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none scale-150 rotate-12 group-hover:rotate-0 transition-transform duration-1000">
                                 <FileText size={120} />
                             </div>
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-accent-secondary mb-8 flex items-center gap-3">
-                                <FileText size={14} /> Output Standard
+                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginBottom: '30px' }}>
+                                <FileText size={24} /> Output Standard
                             </h3>
-                            <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 text-center mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => document.getElementById('template-upload').click()}>
+                            <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 flex flex-col items-center justify-center gap-3 mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => document.getElementById('template-upload').click()}>
                                 <input id="template-upload" type="file" className="hidden" accept=".pdf" onChange={(e) => e.target.files[0] && handleUploadTemplate(e.target.files[0])} />
-                                <FileUp size={28} className="mx-auto text-accent-secondary mb-4" />
+                                <FileUp size={32} className="text-accent-secondary" />
                                 <h4 className="font-black text-sm uppercase italic">Upload Cover Template</h4>
                             </div>
                             {companyTemplates.map(tpl => (
@@ -949,7 +1087,6 @@ function App() {
                                 </div>
                             ))}
                         </div>
-                    </div>
                 </div>
             </div>
         );
@@ -1064,6 +1201,25 @@ function App() {
                         </div>
                     )}
                 </div>
+
+                {/* 4. Danger Zone */}
+                <div className="prism-card px-8 pt-12 pb-8 flex flex-col items-center gap-5 mt-12 mb-12" style={{ background: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+                    <div className="flex justify-between items-start w-full" style={{ marginBottom: '20px' }}>
+                        <h3 className="text-xl font-black uppercase tracking-widest text-accent-danger flex items-center gap-3">
+                            <Trash size={24} /> Danger Zone
+                        </h3>
+                    </div>
+                    <button 
+                        className="btn-danger w-full flex items-center justify-center gap-2 !py-4 font-black text-[12px] uppercase tracking-[0.2em] italic transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        onClick={() => setIsDeleteModalOpen(true)}
+                    >
+                        <Trash size={18} /> DELETE PROJECT
+                    </button>
+                    <p className="text-[9px] text-accent-danger/60 font-black uppercase tracking-[0.2em] text-center">
+                        Purging is irreversible.
+                    </p>
+                </div>
+
             </div>
         </div>
         );
@@ -1323,54 +1479,69 @@ function App() {
                 </div>,
                 document.body
             )}
-            <div className="app-shell bg-bg-deep">
+            <div className="app-shell bg-bg-deep relative overflow-hidden">
+                {/* Glassmorphism Refraction Orbs */}
+                <div className="fixed top-[-10%] left-[-10%] w-[600px] h-[600px] bg-accent-primary/20 rounded-full blur-[140px] pointer-events-none" />
+                <div className="fixed bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-white/5 rounded-full blur-[120px] pointer-events-none" />
+
                 {/* Nav Rail */}
-                <aside className="nav-rail">
+                {/* Nav Rail */}
+                <aside className="nav-rail relative z-20">
                     <div className="logo-area">
                         <div className="logo-prism">SA</div>
                     </div>
-                    <nav className="rail-icons">
-                        <button className={`rail-btn ${view === 'portfolio' ? 'active' : ''}`} onClick={() => { 
-                            setView('portfolio'); 
-                            setActiveProject(null); 
-                            setSelectedDivision(null);
-                            setSelectedSpec(null);
-                        }}>
+
+                    <nav className="rail-icons" style={{ flex: 1, justifyContent: 'flex-start' }}>
+                        <button 
+                            className={`rail-btn ${(!activeProject && view === 'portfolio') ? 'active' : ''}`}
+                            onClick={() => { 
+                                setView('portfolio'); 
+                                setActiveProject(null); 
+                                setSelectedDivision(null);
+                                setSelectedSpec(null);
+                            }}
+                            style={{ marginBottom: '24px' }}
+                        >
                             <Briefcase size={20} />
                             <span className="rail-label">All Projects</span>
                         </button>
-
-                        {/* ACTIVE PROJECT WORKFLOW */}
-                        <div className="mb-4 mt-6">
-                            <h4 className="text-[10px] font-black uppercase text-text-muted tracking-[0.2em] px-3 mb-4 opacity-50">Workflow</h4>
-                            <button className={`rail-btn mb-2 ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
-                                <LayoutDashboard size={20} />
-                                <span className="rail-label">Dashboard</span>
-                            </button>
-                            <button className={`rail-btn mb-2 ${view === 'workbench' ? 'active' : ''}`} onClick={() => setView('workbench')}>
-                                <FileSearch size={20} />
-                                <span className="rail-label">AI Workbench</span>
-                            </button>
-                            <button className={`rail-btn mb-2 ${view === 'tracker' ? 'active' : ''}`} onClick={() => setView('tracker')}>
-                                <Zap size={20} />
-                                <span className="rail-label">Master Tracker</span>
-                            </button>
-                        </div>
-
-                        {/* ADMINISTRATION & SETTINGS */}
-                        <div className="mt-auto pt-8 border-t border-white/5">
-                            <h4 className="text-[10px] font-black uppercase text-text-muted tracking-[0.2em] px-3 mb-4 opacity-50">Admin</h4>
-                            <button className={`rail-btn mb-2 ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
-                                <ShieldCheck size={20} />
-                                <span className="rail-label">Project Admin</span>
-                            </button>
-                            <button className={`rail-btn mb-2 ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
-                                <Building2 size={20} />
-                                <span className="rail-label">Company Info</span>
-                            </button>
-                        </div>
+                        {activeProject && (
+                            <div className="animate-fade-in w-full">
+                                {/* ACTIVE PROJECT WORKFLOW */}
+                                <div className="mb-8">
+                                    <h4 className="text-[11px] font-black uppercase text-text-muted tracking-[0.15em] px-4 mb-4 truncate w-full pr-2">
+                                        {activeProject.name || 'WORKFLOW'}
+                                    </h4>
+                                    <button className={`rail-btn mb-1 ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+                                        <LayoutDashboard size={20} />
+                                        <span className="rail-label">Dashboard</span>
+                                    </button>
+                                    <button className={`rail-btn mb-1 ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
+                                        <ShieldCheck size={20} />
+                                        <span className="rail-label">Project Setup</span>
+                                    </button>
+                                    <button className={`rail-btn mb-1 ${view === 'workbench' ? 'active' : ''}`} onClick={() => setView('workbench')}>
+                                        <FileSearch size={20} />
+                                        <span className="rail-label">Cut Sheet Finder</span>
+                                    </button>
+                                    <button className={`rail-btn mb-1 ${view === 'assemble' ? 'active' : ''}`} onClick={() => setView('assemble')}>
+                                        <Layers size={20} />
+                                        <span className="rail-label">Assemble Submittal</span>
+                                    </button>
+                                    <button className={`rail-btn mb-1 ${view === 'tracker' ? 'active' : ''}`} onClick={() => setView('tracker')}>
+                                        <Zap size={20} />
+                                        <span className="rail-label">Submittal Tracker</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </nav>
+
                     <div className="rail-footer">
+                        <button className={`rail-btn mb-1 ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
+                            <Building2 size={20} />
+                            <span className="rail-label">Company Info</span>
+                        </button>
                         <button className="rail-btn" onClick={() => window.open('https://docs.submittalarchitect.com')}>
                             <Settings size={20} />
                             <span className="rail-label">Help & Docs</span>
@@ -1378,8 +1549,8 @@ function App() {
                         <div className="flex items-center gap-4 px-4 py-4 mt-2 border-t border-white/5">
                             <div className="user-avatar" title="User Profile"></div>
                             <div className="flex flex-col">
-                                <span className="text-[11px] font-bold text-white">Guest User</span>
-                                <span className="text-[9px] text-text-muted uppercase tracking-widest">Enterprise</span>
+                                <span className="text-[13px] font-bold text-white tracking-wide">Guest User</span>
+                                <span className="text-[10px] text-text-muted uppercase tracking-[0.15em] mt-0.5">Enterprise</span>
                             </div>
                         </div>
                     </div>
@@ -1393,9 +1564,6 @@ function App() {
                     </div>
                     <div className="header-actions">
                         <button className="btn-icon"><Bell size={20} /></button>
-                        <button className="btn-primary flex items-center gap-2" onClick={() => setIsNewProjectModalOpen(true)}>
-                            <Plus size={16} /> New Submittal
-                        </button>
                     </div>
                 </header>
 
@@ -1442,6 +1610,7 @@ function App() {
                         <AdminMasterAdmin 
                             setActiveProject={setActiveProject}
                             activeProject={activeProject}
+                            projectData={projectData}
                             authorizedVendors={authorizedVendors}
                             authorizedBrands={manufacturers}
                             preferredWebsites={preferredWebsites}
@@ -1465,6 +1634,10 @@ function App() {
                             setSelectedSpec(section);
                             setView('workbench');
                         }} 
+                    />}
+                    {view === 'assemble' && <AssemblyEngineView 
+                        projectData={projectData} 
+                        activeProject={activeProject} 
                     />}
                 </main>
             </div>

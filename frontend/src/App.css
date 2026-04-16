@@ -1,6 +1,21 @@
+:root {
+  --accent-primary: #ff6b00;
+  --accent-secondary: #00ffa3;
+  --accent-danger: #FF3B30;
+  --bg-main: #0a0b0f;
+  --bg-surface: #14151a;
+  --bg-deep: #0d0e12;
+  --bg-card: #1c1d22;
+  --text-main: #ffffff;
+  --text-muted: #94a3b8;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --glass-effect: blur(12px);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .app-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 260px 1fr;
   grid-template-rows: 70px 1fr;
   grid-template-areas: 
     "rail top"
@@ -374,6 +389,26 @@ button { font-family: inherit; font-weight: 600; cursor: pointer; transition: va
   border: none;
   padding: 10px 20px;
   border-radius: 10px;
+}
+
+.btn-danger {
+  background: var(--accent-danger);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  transition: var(--transition-smooth);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.2);
+}
+
+.btn-danger:hover {
+  background: #E0352B;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 59, 48, 0.3);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
 }
 
 .btn-secondary {

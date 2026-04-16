@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     ShieldCheck, LayoutDashboard, Users, Zap, 
-    Plus, Trash, Shield
+    Plus, Trash, Shield, ChevronDown, ChevronRight
 } from 'lucide-react';
 
 const AdminMasterAdmin = ({ 
     activeProject, 
+    projectData,
     authorizedVendors, 
     authorizedBrands, 
     preferredWebsites,
@@ -19,6 +20,28 @@ const AdminMasterAdmin = ({
 }) => {
     if (!activeProject) return null;
 
+    const [expandedVendor, setExpandedVendor] = useState(null);
+
+    const getVendorAssignments = () => activeProject?.metadata?.vendor_assignments || {};
+
+    const handleToggleVendorSpec = (vendor, specId) => {
+        const assignments = getVendorAssignments();
+        const vendorList = assignments[vendor] || [];
+        const newList = vendorList.includes(specId) 
+            ? vendorList.filter(id => id !== specId)
+            : [...vendorList, specId];
+        
+        onUpdateProjectAdmin({
+            metadata: {
+                ...activeProject.metadata,
+                vendor_assignments: {
+                    ...assignments,
+                    [vendor]: newList
+                }
+            }
+        });
+    };
+
     return (
         <div className="admin-container animate-fade-in p-12 max-w-7xl mx-auto pb-32">
             <div className="flex justify-between items-end px-4" style={{ marginBottom: '1rem' }}>
@@ -28,7 +51,7 @@ const AdminMasterAdmin = ({
                         className="text-4xl font-black tracking-tighter italic uppercase"
                         style={{ marginBottom: '0px' }}
                     >
-                        PROJECT <span className="text-accent-primary">ADMIN</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{activeProject.name}</span>
+                        PROJECT <span className="text-accent-primary">SETUP</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{activeProject.name}</span>
                     </h1>
 
                     {/* SUBHEADER - HARD CODED SEPARATION */}
@@ -38,210 +61,232 @@ const AdminMasterAdmin = ({
                         <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> MANAGE PROJECT-SPECIFIC ORGANIZATION AND SOURCING PREFERENCES.
                     </p>
                 </div>
-                <div className="flex gap-4">
-                    <button className="btn-secondary !py-3 !px-6 flex items-center gap-2 border border-white/10" onClick={() => setView('dashboard')}>
-                        <LayoutDashboard size={18} /> Dashboard
-                    </button>
-                </div>
+
             </div>
 
-            <div className="grid grid-cols-12 gap-12">
-                {/* Left Column: Stats & Setup */}
-                <div className="col-span-12 lg:col-span-4 space-y-12">
-                    <div className="prism-card p-8 border-accent-primary/20 bg-bg-surface/50 shadow-2xl">
-                        <h3 className="text-xs font-black uppercase tracking-[0.4em] text-accent-primary mb-10 flex items-center gap-3">
-                            <Users size={14} /> Project Leadership
+            <div className="max-w-4xl mx-auto space-y-12">
+                
+                {/* 1. Project Leadership */}
+                <div className="prism-card px-8 pt-12 pb-8" style={{ background: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(255, 255, 255, 0.2)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+                    <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
+                        <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
+                            <Users size={24} /> Project Manager
                         </h3>
-                        <div>
-                            <label className="text-[10px] font-black uppercase text-text-muted tracking-widest block mb-3 ml-1">Assigned Manager</label>
-                            <select 
-                                className="prism-input !bg-bg-deep/50 text-white font-bold italic w-full" 
-                                value={activeProject.manager_name || ''}
-                                onChange={(e) => {
-                                    const newName = e.target.value;
-                                    setActiveProject({ ...activeProject, manager_name: newName });
-                                    onUpdateProjectAdmin({ manager_name: newName });
-                                }}
-                            >
-                                <option value="">Unassigned</option>
-                                {projectManagers.map(pm => (
-                                    <option key={pm.id} value={pm.name}>{pm.name}</option>
-                                ))}
-                            </select>
-                        </div>
                     </div>
-
-                    <div className="prism-card p-8 bg-gradient-to-br from-bg-surface to-bg-deep border-white/5">
-                        <h3 className="text-xs font-black uppercase tracking-[0.4em] text-text-muted mb-10 flex items-center gap-3">
-                            <Zap size={14} className="text-accent-primary" /> Progress Metrics
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-5 bg-black/40 rounded-2xl border border-white/5 text-center">
-                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Items</p>
-                                <p className="text-2xl font-black italic">{(activeProject.recentItems || []).length}</p>
-                            </div>
-                            <div className="p-5 bg-black/40 rounded-2xl border border-white/5 text-center">
-                                <p className="text-[9px] font-black text-text-muted uppercase tracking-widest mb-1">Ready</p>
-                                <p className="text-2xl font-black text-accent-secondary italic">{activeProject.progress || 0}%</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Danger Zone: High-Visibility Sidebar Pivot */}
-                    <div className="prism-card p-8 border-accent-danger/20 bg-accent-danger/5 flex flex-col items-center gap-5">
-                        <h3 className="text-xs font-black uppercase tracking-[0.4em] text-accent-danger mb-4 flex items-center gap-3 w-full">
-                            <Trash size={14} /> Danger Zone
-                        </h3>
-                        <button 
-                            className="btn-danger w-full flex items-center justify-center gap-2 !py-4 font-black text-[12px] uppercase tracking-[0.2em] italic transition-all hover:scale-[1.02] active:scale-[0.98]"
-                            onClick={() => setIsDeleteModalOpen(true)}
+                    <div>
+                        <select 
+                            className="prism-input !bg-bg-deep/50 text-white font-bold italic w-full" 
+                            style={{ paddingLeft: '32px' }}
+                            value={activeProject.manager_name || ''}
+                            onChange={(e) => {
+                                const newName = e.target.value;
+                                setActiveProject({ ...activeProject, manager_name: newName });
+                                onUpdateProjectAdmin({ manager_name: newName });
+                            }}
                         >
-                            <Trash size={18} /> DELETE PROJECT
-                        </button>
-                        <p className="text-[9px] text-accent-danger/60 font-black uppercase tracking-[0.2em] text-center">
-                            Purging is irreversible.
-                        </p>
+                            <option value="">Unassigned</option>
+                            {projectManagers.map(pm => (
+                                <option key={pm.id} value={pm.name}>{pm.name}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
-                {/* Right Column: High-Visibility Management Tables */}
-                <div className="col-span-12 lg:col-span-8 space-y-20">
-                    {/* Section 1: Vendors on the Job */}
-                    <div className="prism-card p-0 overflow-hidden border-white/5 shadow-2xl flex flex-col animate-fade-in-right">
-                        <div className="p-8 border-b border-white/5 flex justify-between items-center bg-bg-surface/50">
-                            <div>
-                                <h3 className="text-base font-black uppercase tracking-[0.2em] text-white italic mb-3">Vendors on the Job</h3>
-                                <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight">Active project supply chain entities</p>
-                            </div>
-                            <div className="relative">
-                                <input 
-                                    placeholder="Add Vendor..."
-                                    className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-primary/20"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && e.target.value) {
-                                            const newList = [...authorizedVendors, e.target.value];
-                                            setAuthorizedVendors(newList);
-                                            onUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
-                                            e.target.value = '';
-                                        }
-                                    }}
-                                />
-                                <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-primary" />
-                            </div>
-                        </div>
+                {/* 2. Vendors on the Job */}
+                <div className="prism-card px-8 pt-12 pb-8 overflow-hidden flex flex-col animate-fade-in-right">
+                    <div className="flex justify-between items-start" style={{ marginBottom: '24px' }}>
                         <div>
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-white/5 bg-black/20">
-                                        <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Vendor Entity</th>
-                                        <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Sourcing Logic</th>
-                                        <th className="py-5 px-8 text-right"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {authorizedVendors.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="3" className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest italic opacity-50">No Vendors Registered</td>
-                                        </tr>
-                                    ) : authorizedVendors.map((vendor, idx) => (
-                                        <tr key={idx} className="hover:bg-accent-primary/5 transition-colors group">
-                                            <td className="py-5 px-8 font-black text-xs text-white uppercase italic tracking-tight">{vendor}</td>
-                                            <td className="py-5 px-8"><span className="badge badge-green !text-[8px] !font-black !px-2 !py-0.5 tracking-widest uppercase">Contract Valid</span></td>
-                                            <td className="py-5 px-8 text-right">
-                                                <button 
-                                                    className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
-                                                    onClick={() => {
-                                                        const newList = authorizedVendors.filter((_, i) => i !== idx);
-                                                        setAuthorizedVendors(newList);
-                                                        onUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
-                                                    }}
-                                                >
-                                                    <Trash size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
+                                <Shield size={24} /> Vendors on the Job
+                            </h3>
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9" style={{ marginTop: '8px' }}>Add a vendor and assign spec section to them</p>
+                        </div>
+                        <div className="relative mt-2">
+                            <input 
+                                placeholder="Add Vendor..."
+                                className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-primary/20"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.target.value) {
+                                        const newList = [...authorizedVendors, e.target.value];
+                                        setAuthorizedVendors(newList);
+                                        onUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
+                                        e.target.value = '';
+                                    }
+                                }}
+                            />
+                            <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-primary" />
                         </div>
                     </div>
+                    <div className="flex flex-col border border-white/5 rounded-xl overflow-hidden bg-bg-deep/50 shadow-inner">
+                        <table className="w-full text-left border-collapse">
+                            <tbody className="divide-y divide-white/5">
+                                {authorizedVendors.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="2" className="py-16 text-center text-xs font-black text-text-muted uppercase tracking-widest italic opacity-50">No Vendors Registered</td>
+                                    </tr>
+                                ) : authorizedVendors.map((vendor, idx) => {
+                                    const vendorSpecs = getVendorAssignments()[vendor] || [];
+                                    const isExpanded = expandedVendor === vendor;
 
-                    {/* Section 2: Preferred Search Sites (Vendor Preferences) */}
-                    <div className="prism-card p-0 overflow-hidden border-white/5 shadow-2xl flex flex-col animate-fade-in-right delay-100">
-                        <div className="p-8 border-b border-white/5 flex justify-between items-center bg-bg-surface/50">
-                            <div>
-                                <h3 className="text-base font-black uppercase tracking-[0.2em] text-white italic mb-3">Preferred Search Sites</h3>
-                                <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight">Tier 0 Discovery Protocol</p>
-                            </div>
-                            <div className="relative">
-                                <input 
-                                    placeholder="Add Domain..."
-                                    className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-secondary/20"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && e.target.value) {
-                                            const newList = [...preferredWebsites, e.target.value];
-                                            setPreferredWebsites(newList);
-                                            onUpdateProjectAdmin({ 
-                                                metadata: { 
-                                                    ...activeProject.metadata, 
-                                                    sourcing_prefs: { 
-                                                        ...activeProject.metadata?.sourcing_prefs,
-                                                        preferred_websites: newList 
-                                                    } 
+                                    return (
+                                        <React.Fragment key={idx}>
+                                            <tr className="hover:bg-accent-primary/5 transition-colors group">
+                                                <td className="pr-8 w-full" style={{ paddingTop: '14px', paddingBottom: '14px', paddingLeft: '32px' }}>
+                                                    <div className="font-black text-base text-white uppercase italic tracking-tight">{vendor}</div>
+                                                    {vendorSpecs.length > 0 && (
+                                                        <div className="flex flex-col gap-2" style={{ marginTop: '12px' }}>
+                                                            {vendorSpecs.map(specId => {
+                                                                const specRef = (projectData?.recentItems || []).find(s => s.id === specId);
+                                                                const displayTitle = specRef?.title ? `${specId} - ${specRef.title}` : specId;
+                                                                return (
+                                                                    <span key={specId} className="text-[10px] font-bold tracking-widest uppercase !text-white/40">
+                                                                        {displayTitle}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="pl-8 text-right p-0" style={{ paddingTop: '14px', paddingBottom: '14px', paddingRight: '32px' }}>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button 
+                                                            className={`!text-[10px] !py-2 !px-4 whitespace-nowrap flex-shrink-0 rounded border flex items-center gap-2 transition-all ${
+                                                                vendorSpecs.length > 0 
+                                                                ? 'bg-accent-primary/20 text-accent-primary border-accent-primary opacity-100' 
+                                                                : 'bg-white/5 border-white/10 text-white/50 opacity-40 hover:opacity-100 hover:bg-white/10'
+                                                            }`}
+                                                            onClick={() => setExpandedVendor(isExpanded ? null : vendor)}
+                                                        >
+                                                            {isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>} Assign Specs ({vendorSpecs.length})
+                                                        </button>
+                                                        <button 
+                                                            className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                            onClick={() => {
+                                                                const newList = authorizedVendors.filter((_, i) => i !== idx);
+                                                                setAuthorizedVendors(newList);
+                                                                onUpdateProjectAdmin({ metadata: { ...activeProject.metadata, authorized_vendors: newList } });
+                                                            }}
+                                                        >
+                                                            <Trash size={14} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr className="bg-black/60 shadow-inner">
+                                                    <td colSpan="2" className="p-0 border-t border-white/5">
+                                                        <div className="p-6">
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-muted">Select spec sections for {vendor}</h4>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-4 custom-scrollbar">
+                                                                {(projectData?.recentItems || []).map(spec => (
+                                                                    <label key={spec.id} className={`flex items-start gap-4 p-3 rounded-lg border cursor-pointer transition-all ${vendorSpecs.includes(spec.id) ? 'bg-accent-primary/10 border-accent-primary shadow-[0_0_15px_rgba(255,51,102,0.15)]' : 'bg-white/5 border-white/5 hover:border-white/20'}`}>
+                                                                        <div className="pt-0.5">
+                                                                            <input 
+                                                                                type="checkbox" 
+                                                                                className="w-4 h-4 rounded border-white/20 bg-black/50 text-accent-primary focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                                                                                checked={vendorSpecs.includes(spec.id)}
+                                                                                onChange={() => handleToggleVendorSpec(vendor, spec.id)}
+                                                                            />
+                                                                        </div>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className={`text-[11px] font-black uppercase tracking-widest ${vendorSpecs.includes(spec.id) ? 'text-accent-primary' : 'text-white/70'}`}>{spec.id}</div>
+                                                                            <div className="text-xs text-text-muted truncate mt-0.5 font-bold" title={spec.title}>{spec.title}</div>
+                                                                        </div>
+                                                                    </label>
+                                                                ))}
+                                                                {(!projectData?.recentItems || projectData.recentItems.length === 0) && (
+                                                                    <div className="col-span-full py-6 text-center text-[10px] font-black text-white/30 uppercase tracking-widest italic rounded-lg border border-white/5 bg-black/20">No sections found in project.</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* 3. Preferred Search Sites */}
+                <div className="prism-card px-8 pt-12 pb-8 overflow-hidden flex flex-col animate-fade-in-right delay-100">
+                    <div className="flex justify-between items-start" style={{ marginBottom: '24px' }}>
+                        <div>
+                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
+                                <ShieldCheck size={24} /> Priority Sourcing Domains
+                            </h3>
+                            <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9 leading-relaxed" style={{ marginTop: '8px' }}>
+                                AI will search these preferred search sites before searching manufacturer websites.<br/>
+                                <span className="text-accent-secondary/80 normal-case italic tracking-normal font-medium mt-1 inline-block">Ensure full domain format is used (e.g., https://www.website.com)</span>
+                            </p>
+                        </div>
+                        <div className="relative mt-2">
+                            <input 
+                                placeholder="Add Domain..."
+                                className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-secondary/20"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.target.value) {
+                                        const newList = [...preferredWebsites, e.target.value];
+                                        setPreferredWebsites(newList);
+                                        onUpdateProjectAdmin({ 
+                                            metadata: { 
+                                                ...activeProject.metadata, 
+                                                sourcing_prefs: { 
+                                                    ...activeProject.metadata?.sourcing_prefs,
+                                                    preferred_websites: newList 
                                                 } 
-                                            });
-                                            e.target.value = '';
-                                        }
-                                    }}
-                                />
-                                <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-secondary" />
-                            </div>
-                        </div>
-                        <div>
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-white/5 bg-black/20">
-                                        <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Priority Domain</th>
-                                        <th className="py-5 px-8 text-[10px] font-black text-text-muted uppercase tracking-[0.3em]">Discovery Level</th>
-                                        <th className="py-5 px-8 text-right"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {preferredWebsites.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="3" className="py-12 text-center text-[10px] font-black text-text-muted uppercase tracking-widest italic opacity-50">No Priority Sites Defined</td>
-                                        </tr>
-                                    ) : preferredWebsites.map((site, idx) => (
-                                        <tr key={idx} className="hover:bg-accent-secondary/5 transition-colors group">
-                                            <td className="py-5 px-8 font-black text-xs text-white lowercase italic underline decoration-accent-secondary/30">{site}</td>
-                                            <td className="py-5 px-8"><span className="badge badge-blue !text-[8px] !font-black !px-2 !py-0.5 tracking-widest uppercase">Tier 0 Override</span></td>
-                                            <td className="py-5 px-8 text-right">
-                                                <button 
-                                                    className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
-                                                    onClick={() => {
-                                                        const newList = preferredWebsites.filter((_, i) => i !== idx);
-                                                        setPreferredWebsites(newList);
-                                                        onUpdateProjectAdmin({ 
-                                                            metadata: { 
-                                                                 ...activeProject.metadata, 
-                                                                sourcing_prefs: { 
-                                                                    ...activeProject.metadata?.sourcing_prefs,
-                                                                    preferred_websites: newList 
-                                                                } 
-                                                            } 
-                                                        });
-                                                    }}
-                                                >
-                                                    <Trash size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                            } 
+                                        });
+                                        e.target.value = '';
+                                    }
+                                }}
+                            />
+                            <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-secondary" />
                         </div>
                     </div>
+                    <div className="flex flex-col border border-white/5 rounded-xl overflow-hidden bg-bg-deep/50 shadow-inner">
+                        <table className="w-full text-left border-collapse">
+                            <tbody className="divide-y divide-white/5">
+                                {preferredWebsites.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="2" className="py-16 text-center text-xs font-black text-text-muted uppercase tracking-widest italic opacity-50">No Priority Sites Defined</td>
+                                    </tr>
+                                ) : preferredWebsites.map((site, idx) => (
+                                    <tr key={idx} className="hover:bg-accent-secondary/5 transition-colors group">
+                                        <td className="pr-8 font-black text-sm text-white lowercase italic underline decoration-accent-secondary/40 w-full" style={{ paddingTop: '14px', paddingBottom: '14px', paddingLeft: '32px' }}>{site}</td>
+                                        <td className="pl-8 text-right" style={{ paddingTop: '14px', paddingBottom: '14px', paddingRight: '32px' }}>
+                                            <button 
+                                                className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                onClick={() => {
+                                                    const newList = preferredWebsites.filter((_, i) => i !== idx);
+                                                    setPreferredWebsites(newList);
+                                                    onUpdateProjectAdmin({ 
+                                                        metadata: { 
+                                                             ...activeProject.metadata, 
+                                                            sourcing_prefs: { 
+                                                                ...activeProject.metadata?.sourcing_prefs,
+                                                                preferred_websites: newList 
+                                                            } 
+                                                        } 
+                                                    });
+                                                }}
+                                            >
+                                                <Trash size={14} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
+
+
+
             </div>
 
         </div>

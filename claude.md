@@ -19,3 +19,4 @@
 - Never guess at a part number. If uncertain, flag it.
 - Prioritize Manufacturer-official data over reseller data.
 - Maintain a clean, professional tone in all generated text.
+- **Repeat-and-Wait Protocol**: Always repeat the user's task back for confirmation and wait for an explicit "go" before starting any work.
