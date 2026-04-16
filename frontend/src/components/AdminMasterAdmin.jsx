@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     ShieldCheck, LayoutDashboard, Users, Zap, 
-    Plus, Trash, Shield, ChevronDown, ChevronRight
+    Plus, Trash, Shield, ChevronDown, ChevronRight, CheckCircle, Circle
 } from 'lucide-react';
 
 const AdminMasterAdmin = ({ 
@@ -175,26 +175,31 @@ const AdminMasterAdmin = ({
                                             {isExpanded && (
                                                 <tr className="bg-black/60 shadow-inner">
                                                     <td colSpan="2" className="p-0 border-t border-white/5">
-                                                        <div className="p-6">
-                                                            <div className="flex items-center justify-between mb-4">
-                                                                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-muted">Select spec sections for {vendor}</h4>
+                                                        <div style={{ paddingTop: '40px', paddingBottom: '24px', paddingLeft: '48px', paddingRight: '24px' }}>
+                                                            <div className="flex items-center justify-between" style={{ marginBottom: '32px' }}>
+                                                                <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-text-muted">Select spec sections for {vendor}</h4>
                                                             </div>
-                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-4 custom-scrollbar">
+                                                            <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto custom-scrollbar pb-2" style={{ paddingRight: '16px' }}>
                                                                 {(projectData?.recentItems || []).map(spec => (
-                                                                    <label key={spec.id} className={`flex items-start gap-4 p-3 rounded-lg border cursor-pointer transition-all ${vendorSpecs.includes(spec.id) ? 'bg-accent-primary/10 border-accent-primary shadow-[0_0_15px_rgba(255,51,102,0.15)]' : 'bg-white/5 border-white/5 hover:border-white/20'}`}>
-                                                                        <div className="pt-0.5">
-                                                                            <input 
-                                                                                type="checkbox" 
-                                                                                className="w-4 h-4 rounded border-white/20 bg-black/50 text-accent-primary focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                                                                                checked={vendorSpecs.includes(spec.id)}
-                                                                                onChange={() => handleToggleVendorSpec(vendor, spec.id)}
-                                                                            />
+                                                                    <div 
+                                                                        key={spec.id} 
+                                                                        onClick={() => handleToggleVendorSpec(vendor, spec.id)}
+                                                                        className="group flex flex-row items-center justify-start rounded-lg cursor-pointer transition-all duration-200 bg-transparent border-transparent hover:bg-white/5"
+                                                                        style={{ paddingTop: '16px', paddingBottom: '16px', paddingLeft: '24px', paddingRight: '24px' }}
+                                                                    >
+                                                                        <div className="flex-shrink-0" style={{ marginRight: '40px' }}>
+                                                                            {vendorSpecs.includes(spec.id) ? (
+                                                                                <CheckCircle size={26} className="text-accent-primary transition-all duration-300 scale-110 drop-shadow-[0_0_8px_rgba(255,107,0,0.5)]" />
+                                                                            ) : (
+                                                                                <Circle size={26} className="text-white/20 transition-all duration-300 group-hover:scale-110 group-hover:text-white/40" />
+                                                                            )}
                                                                         </div>
-                                                                        <div className="flex-1 min-w-0">
-                                                                            <div className={`text-[11px] font-black uppercase tracking-widest ${vendorSpecs.includes(spec.id) ? 'text-accent-primary' : 'text-white/70'}`}>{spec.id}</div>
-                                                                            <div className="text-xs text-text-muted truncate mt-0.5 font-bold" title={spec.title}>{spec.title}</div>
+                                                                        
+                                                                        <div className="flex flex-col justify-center gap-1.5 truncate">
+                                                                            <div className={`text-[15px] font-black uppercase tracking-widest ${vendorSpecs.includes(spec.id) ? 'text-white' : 'text-white/60 group-hover:text-white/90 transition-colors'}`}>{spec.id}</div>
+                                                                            <div className={`text-[12px] uppercase font-bold tracking-widest truncate ${vendorSpecs.includes(spec.id) ? 'text-accent-primary' : 'text-text-muted'}`}>{spec.title}</div>
                                                                         </div>
-                                                                    </label>
+                                                                    </div>
                                                                 ))}
                                                                 {(!projectData?.recentItems || projectData.recentItems.length === 0) && (
                                                                     <div className="col-span-full py-6 text-center text-[10px] font-black text-white/30 uppercase tracking-widest italic rounded-lg border border-white/5 bg-black/20">No sections found in project.</div>
