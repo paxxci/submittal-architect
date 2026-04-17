@@ -6,7 +6,7 @@ import {
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
     FileText, ExternalLink, Briefcase, Building2, Trash, Maximize, X, Globe,
-    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone, Edit2, Layers
+    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone, Edit2, Layers, LayoutGrid, List, Send, BookOpen
 } from 'lucide-react'
 import { supabase } from './supabase'
 import NewProjectModal from './components/NewProjectModal';
@@ -16,6 +16,7 @@ import FormattedSpecText from './components/FormattedSpecText';
 import TrackerView from './TrackerView';
 import ErrorBoundary from './ErrorBoundary';
 import AdminMasterAdmin from './components/AdminMasterAdmin';
+import HelpAndDocsView from './components/HelpAndDocsView';
 import DeleteProjectPlusModal from './components/DeleteProjectPlusModal';
 import './App.css';
 
@@ -93,6 +94,8 @@ function App() {
     const [selectedDivision, setSelectedDivision] = useState(null)
     const [projectData, setProjectData] = useState(null)
     const [portfolio, setPortfolio] = useState([]) // Real projects from Supabase
+    const [projectLayout, setProjectLayout] = useState('grid') // 'grid' | 'list'
+    const [projectSort, setProjectSort] = useState('recent') // 'recent' | 'alphaAsc' | 'alphaDesc'
     const [isPortfolioLoading, setIsPortfolioLoading] = useState(true) // Tracks initial fetch state
     const [selectedSpec, setSelectedSpec] = useState(null)
     const [selectedPart, setSelectedPart] = useState('part2') // part1, part2, part3
@@ -837,66 +840,149 @@ function App() {
         if (data) setCompanyTemplates(prev => [data[0], ...prev]);
         if (error) console.error('Error uploading template:', error);
     };
-    const renderPortfolio = () => (
-        <div className="portfolio-root animate-fade-in p-6">
-            <div className="flex justify-between items-end mb-8">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight mb-2">My Projects</h1>
-                    <p className="text-text-muted">Manage all active submittal packages across your portfolio.</p>
-                </div>
-                <button className="btn-primary" onClick={() => { setIsNewProjectModalOpen(true); setNewProjectStep(1); setNewProjectData({ name: '', client: '', manager: '', fileLoaded: false, autoDetect: true, customDivisions: [], divisions: { '26': true, '27': false, '28': false } }); }}>
-                    <Plus size={16} className="inline mr-2" /> New Project
-                </button>
-            </div>
+    const renderPortfolio = () => {
+        const sortedPortfolio = [...portfolio].sort((a, b) => {
+            if (projectSort === 'alphaAsc') {
+                return (a.name || '').localeCompare(b.name || '');
+            } else if (projectSort === 'alphaDesc') {
+                return (b.name || '').localeCompare(a.name || '');
+            }
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
 
-            {isPortfolioLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[1,2,3].map(i => (
-                        <div key={i} className="prism-card animate-pulse h-48 border-white/5 bg-white/[0.02]"></div>
-                    ))}
-                </div>
-            ) : portfolio.length === 0 ? (
-                <div className="prism-card text-center py-16">
-                    <Building2 size={48} className="text-text-muted mx-auto mb-4" />
-                    <h3 className="text-xl font-bold mb-2">No Projects Yet</h3>
-                    <p className="text-text-muted mb-6">Create your first submittal project to get started.</p>
-                    <button className="btn-primary" onClick={() => setIsNewProjectModalOpen(true)}>
-                        <Plus size={16} className="inline mr-2" /> Create First Project
-                    </button>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {portfolio.map((proj, i) => (
-                        <div 
-                            key={proj.id || i} 
-                            className="prism-card hover:border-accent-primary/50 cursor-pointer transition-all hover:translate-y-[-2px]"
-                            onClick={() => {
-                                setActiveProject(proj);
-                                loadProjectData(proj, null);
-                                setView('dashboard');
-                            }}
-                        >
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="p-3 bg-bg-deep rounded-lg border border-border-subtle">
-                                    <Building2 size={24} className="text-accent-secondary" />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="badge badge-orange font-bold">In Progress</span>
-                                </div>
+        const gridClass = projectLayout === 'grid' 
+            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" 
+            : "flex flex-col gap-4";
+
+        return (
+            <div className="portfolio-root animate-fade-in p-6">
+                <svg width="0" height="0" className="absolute">
+                    <defs>
+                        <linearGradient id="portfolio-icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#F59E0B" />
+                            <stop offset="100%" stopColor="#EA580C" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+                    <div>
+                        <h1 className="text-3xl font-extrabold tracking-tight mb-2">My Projects</h1>
+                        <p className="text-text-muted">Manage all active submittal packages across your portfolio.</p>
+                    </div>
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3">
+                            <div className="flex gap-1 items-center">
+                                <button 
+                                    onClick={() => setProjectSort(projectSort === 'alphaAsc' ? 'recent' : 'alphaAsc')} 
+                                    className={`p-2 rounded-lg transition-all ${projectSort !== 'recent' ? 'bg-accent-primary/20 text-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]' : 'text-text-muted hover:text-white hover:bg-white/5'}`}
+                                    title="Toggle A-Z Sort"
+                                >
+                                    <span className="font-extrabold text-[12px] leading-none px-0.5 mt-0.5 block">A-Z</span>
+                                </button>
+                                <button 
+                                    onClick={() => setProjectLayout('grid')} 
+                                    className={`p-2 rounded-lg transition-all ${projectLayout==='grid'?'bg-accent-primary/20 text-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]':'text-text-muted hover:text-white hover:bg-white/5'}`}
+                                    title="Grid View"
+                                >
+                                    <LayoutGrid size={17} />
+                                </button>
+                                <button 
+                                    onClick={() => setProjectLayout('list')} 
+                                    className={`p-2 rounded-lg transition-all ${projectLayout==='list'?'bg-accent-primary/20 text-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]':'text-text-muted hover:text-white hover:bg-white/5'}`}
+                                    title="List View"
+                                >
+                                    <List size={17} />
+                                </button>
                             </div>
-                            <h3 className="text-lg font-bold mb-1 line-clamp-1">{proj.name}</h3>
-                            <p className="text-sm text-text-muted mb-2">{proj.description || 'No description'}</p>
-                            <p className="text-xs text-text-muted">{new Date(proj.created_at).toLocaleDateString()}</p>
                         </div>
-                    ))}
+                        <button className="btn-primary flex items-center h-11 px-5 text-sm" onClick={() => { setIsNewProjectModalOpen(true); setNewProjectStep(1); setNewProjectData({ name: '', client: '', manager: '', fileLoaded: false, autoDetect: true, customDivisions: [], divisions: { '26': true, '27': false, '28': false } }); }}>
+                            <Plus size={18} className="mr-2" /> New Project
+                        </button>
+                    </div>
                 </div>
-            )}
-        </div>
-    );
+
+                {isPortfolioLoading ? (
+                    <div className={gridClass}>
+                        {[1,2,3].map(i => (
+                            <div key={i} className={`prism-card animate-pulse border-white/5 bg-white/[0.02] ${projectLayout === 'list' ? 'h-24' : 'h-48'}`}></div>
+                        ))}
+                    </div>
+                ) : portfolio.length === 0 ? (
+                    <div className="prism-card text-center py-16 mt-8">
+                        <Building2 size={48} className="text-text-muted mx-auto mb-4" />
+                        <h3 className="text-xl font-bold mb-2">No Projects Yet</h3>
+                        <p className="text-text-muted mb-6">Create your first submittal project to get started.</p>
+                        <button className="btn-primary" onClick={() => setIsNewProjectModalOpen(true)}>
+                            <Plus size={16} className="inline mr-2" /> Create First Project
+                        </button>
+                    </div>
+                ) : (
+                    <div className={gridClass}>
+                        {sortedPortfolio.map((proj, i) => (
+                            <div 
+                                key={proj.id || i} 
+                                className={`prism-card hover:border-accent-primary/50 cursor-pointer transition-all hover:translate-y-[-2px] ${projectLayout === 'list' ? 'flex flex-row items-center justify-between !p-4 !py-3' : ''}`}
+                                onClick={() => {
+                                    setActiveProject(proj);
+                                    loadProjectData(proj, null);
+                                    setView('dashboard');
+                                }}
+                            >
+                                {projectLayout === 'grid' ? (
+                                    <>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="p-3 bg-bg-deep rounded-lg border border-accent-primary/20 shadow-[0_0_15px_rgba(255,107,0,0.05)]">
+                                                <Building2 size={24} color="url(#portfolio-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} />
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="badge font-black uppercase tracking-widest bg-accent-primary/10 border border-accent-primary/40 shadow-[0_0_15px_rgba(255,107,0,0.15)]">
+                                                    <span style={{ backgroundImage: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'inline-block' }}>In Progress</span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <h3 className="text-lg font-bold mb-1 line-clamp-1">{proj.name}</h3>
+                                        <p className="text-sm text-text-muted mb-3">{proj.description || 'Various Divisions'}</p>
+                                        <p className="text-xs text-text-muted opacity-60 uppercase tracking-widest">{new Date(proj.created_at).toLocaleDateString()}</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-center gap-4 flex-1">
+                                            <div className="p-2.5 bg-bg-deep rounded-lg border border-accent-primary/20 shadow-[0_0_15px_rgba(255,107,0,0.05)] shrink-0">
+                                                <Building2 size={20} color="url(#portfolio-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-bold mb-0.5 line-clamp-1">{proj.name}</h3>
+                                                <p className="text-xs text-text-muted line-clamp-1">{proj.description || 'Various Divisions'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-6 shrink-0">
+                                            <p className="text-xs text-text-muted uppercase tracking-widest w-24 text-right opacity-60">{new Date(proj.created_at).toLocaleDateString()}</p>
+                                            <span className="badge font-black uppercase tracking-widest bg-accent-primary/10 border border-accent-primary/40 shadow-[0_0_15px_rgba(255,107,0,0.15)] w-28 text-center text-[10px]">
+                                                <span style={{ backgroundImage: 'linear-gradient(135deg, #F59E0B 0%, #EA580C 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'inline-block' }}>In Progress</span>
+                                            </span>
+                                            <ChevronRight size={18} className="text-text-muted opacity-30 group-hover:opacity-100 group-hover:text-accent-primary transition-colors" />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const renderCompanyAdmin = () => {
         return (
             <div className="admin-container animate-fade-in p-12 max-w-7xl mx-auto pb-32">
+                <svg width="0" height="0" className="absolute">
+                    <defs>
+                        <linearGradient id="company-icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#F59E0B" />
+                            <stop offset="100%" stopColor="#EA580C" />
+                        </linearGradient>
+                    </defs>
+                </svg>
                 <div className="px-4" style={{ marginBottom: '1rem' }}>
                     <div>
                         <h1 
@@ -914,8 +1000,8 @@ function App() {
                 <div className="space-y-12">
                         <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl">
                             <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
-                                <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginTop: '16px' }}>
-                                    <Building2 size={24} /> Corporate Identity
+                                <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3" style={{ marginTop: '16px' }}>
+                                    <Building2 size={24} color="url(#company-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Corporate Identity
                                 </h3>
                                 <button 
                                     className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted hover:text-white transition-colors flex items-center gap-2"
@@ -962,8 +1048,8 @@ function App() {
 
                         <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl">
                             <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
-                                <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginTop: '16px' }}>
-                                    <Users size={24} /> Team Directory
+                                <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3" style={{ marginTop: '16px' }}>
+                                    <Users size={24} color="url(#company-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Team Directory
                                 </h3>
                                 
                                 <button 
@@ -1078,8 +1164,8 @@ function App() {
                             <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none scale-150 rotate-12 group-hover:rotate-0 transition-transform duration-1000">
                                 <FileText size={120} />
                             </div>
-                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3" style={{ marginBottom: '30px' }}>
-                                <FileText size={24} /> Output Standard
+                            <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3" style={{ marginBottom: '30px' }}>
+                                <FileText size={24} color="url(#company-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Output Standard
                             </h3>
                             <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 flex flex-col items-center justify-center gap-3 mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => document.getElementById('template-upload').click()}>
                                 <input id="template-upload" type="file" className="hidden" accept=".pdf" onChange={(e) => e.target.files[0] && handleUploadTemplate(e.target.files[0])} />
@@ -1110,123 +1196,201 @@ function App() {
                 <p className="text-sm font-medium">Loading project...</p>
             </div>
         );
+        // Derive some stats for the KPI deck
+        const totalDivisions = projectData?.divisions?.length || 0;
+        const totalSections = projectData?.divisions?.reduce((acc, div) => acc + (div.tasks || 0), 0) || 0;
+        const totalReady = projectData?.divisions?.reduce((acc, div) => acc + (div.completed || 0), 0) || 0;
+        const projectProgress = projectData?.progress || 0;
+
         return (
-        <div className="dashboard-root animate-fade-in">
-            {/* Breadcrumb Header Area */}
-            <div className="mb-4 px-2">
-                <button 
-                    onClick={() => { 
-                        setView('portfolio'); 
-                        setActiveProject(null); 
-                        setSelectedDivision(null); 
-                        setSelectedSpec(null); 
-                    }} 
-                    className="text-sm font-bold text-text-muted hover:text-white flex items-center gap-1 transition-colors"
-                >
-                    <ChevronRight size={14} className="rotate-180" /> Back to Portfolio
-                </button>
-            </div>
+        <div className="flex flex-col h-full w-full bg-[#0a0b0e] text-text-primary p-10 overflow-y-auto custom-scrollbar">
             
-            <div className="hero-section prism-card">
-                <div className="flex justify-between items-start mb-8">
-                    <div className="flex gap-4 items-center">
-                        <div className="project-icon bg-accent-primary">
-                            <Box size={24} color="white" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-extrabold tracking-tight">{projectData?.name}</h1>
-                            <p className="text-text-muted text-sm">{projectData?.client}</p>
-                        </div>
-                    </div>
-                    <span className="badge badge-orange font-bold">In Progress</span>
-                </div>
-
-                <div className="progress-container mb-6">
-                    <div className="flex justify-between text-sm mb-2">
-                        <span className="font-bold">{projectData?.progress}% complete</span>
-                        <span className="text-text-muted">{projectData?.daysLeft} days left</span>
-                    </div>
-                    <div className="progress-bar-bg h-2 rounded-full overflow-hidden">
-                        <div className="progress-fill h-full bg-accent-primary glow-orange" style={{ width: `${projectData?.progress}%` }}></div>
-                    </div>
-                </div>
-
-                <div className="flex gap-2">
-                    {[1, 2, 3, 4].map(i => (
-                        <div key={i} className="avatar-circle"></div>
-                    ))}
-                    <div className="avatar-count">+4</div>
-                    <div className="ml-auto text-text-muted text-xs flex items-center gap-4">
-                        <span className="flex items-center gap-1"><Clock size={12} /> Start: Nov 12</span>
-                        <span className="flex items-center gap-1"><CheckCircle2 size={12} /> End: Dec 12</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Divisions Section */}
-            <div className="mt-8">
-                <div className="flex justify-between items-center mb-4 px-2">
-                    <h2 className="text-lg font-bold">Project Divisions</h2>
-                    <button
-                        id="add-section-btn"
-                        style={{ padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                        className="btn-secondary"
-                        onClick={() => setIsAddSectionModalOpen(true)}
+            {/* COMMAND CENTER HEADER */}
+            <div className="px-4" style={{ marginBottom: '1.5rem' }}>
+                <div className="flex items-center justify-between mb-4">
+                    <button 
+                        onClick={() => { 
+                            setView('portfolio'); 
+                            setActiveProject(null); 
+                            setSelectedDivision(null); 
+                            setSelectedSpec(null); 
+                        }} 
+                        className="text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-white flex items-center gap-2 transition-colors"
                     >
-                        <Plus size={13} />
-                        Add Section Manually
+                        <ChevronRight size={12} className="rotate-180" /> Back to Portfolio
                     </button>
                 </div>
-                <div className="space-y-4">
-                    {projectData?.divisions && projectData?.divisions.length > 0 ? projectData?.divisions.map(div => (
-                        <div key={div.id} className="division-row prism-card" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className={`status-node ${div.completed === div.tasks ? 'complete' : 'in-progress'}`}>
-                                        {div.completed === div.tasks ? <CheckCircle2 size={16} /> : <Clock size={16} />}
+                <h1 className="text-4xl font-black tracking-tighter italic uppercase" style={{ marginBottom: '4px' }}>
+                    PROJECT <span className="text-accent-primary">DASHBOARD</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{projectData?.name}</span>
+                </h1>
+                
+                <p className="text-text-muted font-black uppercase tracking-[0.3em] text-[11px] opacity-60">
+                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> CLIENT: {projectData?.client || 'UNKNOWN'} | PM: {projectData?.manager || 'UNKNOWN'}
+                </p>
+            </div>
+
+            <div className="flex flex-col gap-6 px-4 pb-12">
+                <svg width="0" height="0" className="absolute">
+                    <defs>
+                        <linearGradient id="dashboard-icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#F59E0B" />
+                            <stop offset="100%" stopColor="#EA580C" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                {/* KPI DECK (TOP ROW) */}
+                <div className="grid grid-cols-4 gap-6">
+                <div className="prism-card !p-6 flex flex-col justify-between h-36 relative overflow-hidden group hover:border-accent-primary/50 transition-colors">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Total Progress</span>
+                        <Zap size={14} color="url(#dashboard-icon-gradient)" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-black italic tracking-tighter">{projectProgress}%</div>
+                        <div className="w-full bg-white/5 h-1.5 mt-2 rounded-full overflow-hidden">
+                            <div className="h-full bg-accent-primary shadow-[0_0_10px_rgba(255,107,0,0.8)] transition-all duration-1000" style={{ width: `${projectProgress}%` }}></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="prism-card !p-6 flex flex-col justify-between h-36 relative overflow-hidden group hover:border-accent-primary/30 transition-colors">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Active Divisions</span>
+                        <Layers size={14} color="url(#dashboard-icon-gradient)" className="opacity-60 group-hover:opacity-100 transition-opacity" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-black italic tracking-tighter">{totalDivisions}</div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mt-1">Found in Spec</div>
+                    </div>
+                </div>
+
+                <div className="prism-card !p-6 flex flex-col justify-between h-36 relative overflow-hidden group hover:border-accent-primary/30 transition-colors">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Sections Ready</span>
+                        <CheckCircle2 size={14} color="url(#dashboard-icon-gradient)" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-black italic tracking-tighter">{totalReady} <span className="text-text-muted text-xl">/ {totalSections}</span></div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mt-1">Verified & Complete</div>
+                    </div>
+                </div>
+
+                <div className="prism-card !p-6 flex flex-col justify-between h-36 relative overflow-hidden group hover:border-accent-primary/30 transition-colors">
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Submittals Sent</span>
+                        <Send size={14} color="url(#dashboard-icon-gradient)" className="opacity-60 group-hover:opacity-100 transition-opacity" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} />
+                    </div>
+                    <div>
+                        <div className="text-3xl font-black italic tracking-tighter">0</div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mt-1">Pending Transmission</div>
+                    </div>
+                </div>
+            </div>
+
+                {/* ASYMMETRIC BODY GRID (65% / 35%) */}
+                <div className="grid lg:grid-cols-[2fr_1fr] gap-6 items-stretch">
+                
+                {/* LEFT COLUMN: Project Divisions */}
+                <div className="prism-card !p-8 border-white/10 h-full flex flex-col">
+                    <div className="flex justify-between items-center shrink-0" style={{ marginBottom: '1.0rem' }}>
+                        <h2 className="text-sm font-black uppercase tracking-[0.2em]">Project Divisions</h2>
+                        <button
+                            id="add-section-btn"
+                            className="bg-white/5 hover:bg-accent-primary/20 hover:text-accent-primary text-white transition-all px-3 py-1.5 rounded text-[10px] uppercase font-black tracking-widest flex items-center gap-2"
+                            onClick={() => setIsAddSectionModalOpen(true)}
+                        >
+                            <Plus size={12} />
+                            Add Section Manually
+                        </button>
+                    </div>
+
+                    <div className="space-y-4 flex-1">
+                        {projectData?.divisions && projectData?.divisions.length > 0 ? projectData?.divisions.map(div => (
+                            <div key={div.id} className="group relative overflow-hidden bg-white/[0.02] border border-white/5 hover:border-accent-primary/40 rounded-xl p-6 cursor-pointer transition-all hover:translate-y-[-2px] hover:shadow-[0_0_15px_rgba(255,107,0,0.1)]" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <div className="flex items-center justify-between pl-2">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center border ${div.completed === div.tasks ? 'bg-accent-primary/10 border-accent-primary/20 text-accent-primary' : 'bg-white/5 border-white/10 text-text-muted'}`}>
+                                            {div.completed === div.tasks ? <CheckCircle2 size={14} color="url(#dashboard-icon-gradient)" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} /> : <Layers size={14} color="url(#dashboard-icon-gradient)" className="opacity-50" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.5))' }} />}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-sm tracking-wide">Division {div.id} - {div.title}</h3>
+                                            <p className="text-[10px] uppercase tracking-wider text-text-muted mt-0.5">{div.tasks} Sections Found</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-bold">Division {div.id} - {div.title}</h3>
-                                        <p className="text-xs text-text-muted">{div.tasks} Sections Found</p>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded ${div.completed === div.tasks ? 'bg-accent-primary/20 text-accent-primary shadow-[0_0_10px_rgba(255,107,0,0.2)]' : 'bg-[#18181A] border border-white/5 text-text-muted group-hover:text-white transition-colors'}`}>
+                                                {div.completed}/{div.tasks} Ready
+                                            </span>
+                                        </div>
+                                        <ChevronRight className="text-text-muted group-hover:text-accent-primary transition-colors" size={16} />
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-6">
-                                    <div className="text-right">
-                                        <span className={`badge ${div.completed === div.tasks ? 'badge-green' : 'badge-orange'}`}>
-                                            {div.completed}/{div.tasks} Ready
-                                        </span>
-                                    </div>
-                                    <ChevronRight className="text-text-muted" size={20} />
                                 </div>
                             </div>
-                        </div>
-                    )) : (
-                        <div className="p-8 text-center border border-dashed border-border-subtle rounded-xl text-text-muted">
-                            <FileSearch size={32} className="mx-auto mb-4 opacity-50" />
-                            <p>No divisions processed yet. Run the AI Shredder to extract specifications.</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* 4. Danger Zone */}
-                <div className="prism-card px-8 pt-12 pb-8 flex flex-col items-center gap-5 mt-12 mb-12" style={{ background: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-                    <div className="flex justify-between items-start w-full" style={{ marginBottom: '20px' }}>
-                        <h3 className="text-xl font-black uppercase tracking-widest text-accent-danger flex items-center gap-3">
-                            <Trash size={24} /> Danger Zone
-                        </h3>
+                        )) : (
+                            <div className="p-8 text-center border border-dashed border-border-subtle rounded-xl text-text-muted">
+                                <FileSearch size={32} className="mx-auto mb-4 opacity-50" />
+                                <p className="text-sm font-medium">No divisions processed yet.</p>
+                            </div>
+                        )}
                     </div>
-                    <button 
-                        className="btn-danger w-full flex items-center justify-center gap-2 !py-4 font-black text-[12px] uppercase tracking-[0.2em] italic transition-all hover:scale-[1.02] active:scale-[0.98]"
-                        onClick={() => setIsDeleteModalOpen(true)}
-                    >
-                        <Trash size={18} /> DELETE PROJECT
-                    </button>
-                    <p className="text-[9px] text-accent-danger/60 font-black uppercase tracking-[0.2em] text-center">
-                        Purging is irreversible.
-                    </p>
                 </div>
 
+                {/* RIGHT COLUMN: Sidebar Content */}
+                <div className="flex flex-col gap-6">
+                    {/* Mini Timeline / Status Widget Skeleton */}
+                    <div className="prism-card !p-6 flex flex-col items-center justify-center min-h-[320px] border border-white/10 relative overflow-hidden bg-[#0A0B0E]">
+                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,107,0,0.15)_0%,transparent_60%)] opacity-80 pointer-events-none"></div>
+                        <div className="w-36 h-36 rounded-full border-[10px] border-white/5 border-r-accent-primary border-t-accent-primary shadow-[0_0_30px_rgba(255,107,0,0.3)] animate-[spin_8s_linear_infinite] mb-6 relative">
+                            <div className="absolute inset-0 m-auto w-[110px] h-[110px] bg-[#0A0B0E] shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] rounded-full flex items-center justify-center flex-col animate-[spin_8s_linear_infinite_reverse]">
+                                <div className="text-3xl font-black italic tracking-tighter text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">{projectProgress}%</div>
+                            </div>
+                        </div>
+                        <h3 className="text-xs font-black uppercase tracking-[0.2em] mb-1 z-10">Project Status</h3>
+                        <p className="text-[10px] text-text-muted uppercase tracking-wider text-center z-10">Data visualized from division tracking.</p>
+                    </div>
+
+                    {/* Team/Activity Log Skeleton */}
+                    <div className="prism-card !p-6 border-white/10 bg-[#0A0B0E]">
+                         <h2 className="text-xs font-black uppercase tracking-[0.2em] mb-6">Recent Activity</h2>
+                         <div className="space-y-4">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="group flex gap-4 items-start cursor-pointer hover:bg-white/[0.02] p-2 -mx-2 rounded transition-colors">
+                                    <div className="w-6 h-6 rounded-full bg-white/5 border border-white/10 shrink-0 flex items-center justify-center mt-0.5 group-hover:border-accent-primary/40 group-hover:bg-accent-primary/10 transition-colors"><Box size={10} color="url(#dashboard-icon-gradient)" className="opacity-70 group-hover:opacity-100 transition-all" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.6))' }}/></div>
+                                    <div>
+                                        <div className="text-[11px] font-bold group-hover:text-accent-primary transition-colors">System Automation</div>
+                                        <div className="text-[9px] text-text-muted uppercase tracking-wide leading-tight mt-1">Generated {i} new sections for review</div>
+                                    </div>
+                                    <div className="ml-auto text-[9px] text-text-muted font-black tracking-wider pt-1">{i}h ago</div>
+                                </div>
+                            ))}
+                         </div>
+                    </div>
+                </div>
             </div>
+
+                {/* FULL WIDTH: DANGER ZONE */}
+                <div>
+                    <div className="prism-card !p-6 flex items-center justify-between border border-red-500/20" style={{ background: 'rgba(239, 68, 68, 0.03)' }}>
+                        <div className="flex flex-col gap-1.5 pl-2">
+                            <h3 className="text-sm font-black uppercase tracking-[0.2em] text-accent-danger flex items-center gap-3">
+                                <Trash size={16} /> Danger Zone
+                            </h3>
+                            <p className="text-[9px] text-accent-danger/60 font-black uppercase tracking-[0.2em]">
+                                Purging is irreversible and immediately wipes all extracted data.
+                            </p>
+                        </div>
+                        <button 
+                            className="bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] text-red-500 hover:text-red-400 px-6 py-3 rounded flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-[0.2em] italic transition-all active:scale-[0.98]"
+                            onClick={() => setIsDeleteModalOpen(true)}
+                        >
+                            <Trash size={14} /> DELETE PROJECT
+                        </button>
+                    </div>
+                </div>
+        </div>
+
         </div>
         );
     }
@@ -1547,8 +1711,8 @@ function App() {
                             <Building2 size={20} />
                             <span className="rail-label">Company Info</span>
                         </button>
-                        <button className="rail-btn" onClick={() => window.open('https://docs.submittalarchitect.com')}>
-                            <Settings size={20} />
+                        <button className={`rail-btn ${view === 'help' ? 'active' : ''}`} onClick={() => setView('help')}>
+                            <BookOpen size={20} />
                             <span className="rail-label">Help & Docs</span>
                         </button>
                         <div className="flex items-center gap-4 px-4 py-4 mt-2 border-t border-white/5">
@@ -1629,6 +1793,7 @@ function App() {
                             setIsDeleteModalOpen={setIsDeleteModalOpen}
                         />
                     )}
+                    {view === 'help' && <HelpAndDocsView setView={setView} />}
                     {view === 'tracker' && <TrackerView 
                         projectData={projectData} 
                         activeProject={activeProject} 

@@ -44,6 +44,14 @@ const AdminMasterAdmin = ({
 
     return (
         <div className="admin-container animate-fade-in p-12 max-w-7xl mx-auto pb-32">
+            <svg width="0" height="0" className="absolute">
+                <defs>
+                    <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#F59E0B" />
+                        <stop offset="100%" stopColor="#EA580C" />
+                    </linearGradient>
+                </defs>
+            </svg>
             <div className="flex justify-between items-end px-4" style={{ marginBottom: '1rem' }}>
                 <div>
                     {/* TITLE - HARD CODED MARGIN */}
@@ -69,8 +77,8 @@ const AdminMasterAdmin = ({
                 {/* 1. Project Leadership */}
                 <div className="prism-card px-8 pt-12 pb-8" style={{ background: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(255, 255, 255, 0.2)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
                     <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
-                        <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
-                            <Users size={24} /> Project Manager
+                        <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                            <Users size={24} color="url(#icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Project Manager
                         </h3>
                     </div>
                     <div>
@@ -96,8 +104,8 @@ const AdminMasterAdmin = ({
                 <div className="prism-card px-8 pt-12 pb-8 overflow-hidden flex flex-col animate-fade-in-right">
                     <div className="flex justify-between items-start" style={{ marginBottom: '24px' }}>
                         <div>
-                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
-                                <Shield size={24} /> Vendors on the Job
+                            <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                                <Shield size={24} color="url(#icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Vendors on the Job
                             </h3>
                             <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9" style={{ marginTop: '8px' }}>Add a vendor and assign spec section to them</p>
                         </div>
@@ -221,8 +229,8 @@ const AdminMasterAdmin = ({
                 <div className="prism-card px-8 pt-12 pb-8 overflow-hidden flex flex-col animate-fade-in-right delay-100">
                     <div className="flex justify-between items-start" style={{ marginBottom: '24px' }}>
                         <div>
-                            <h3 className="text-xl font-black uppercase tracking-widest text-accent-primary flex items-center gap-3">
-                                <ShieldCheck size={24} /> Priority Sourcing Domains
+                            <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                                <ShieldCheck size={24} color="url(#icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Priority Sourcing Domains
                             </h3>
                             <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9 leading-relaxed" style={{ marginTop: '8px' }}>
                                 AI will search these preferred search sites before searching manufacturer websites.<br/>

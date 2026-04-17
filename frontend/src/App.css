@@ -1,5 +1,6 @@
 :root {
   --accent-primary: #ff6b00;
+  --accent-gradient: linear-gradient(135deg, #F59E0B 0%, #EA580C 100%);
   --accent-secondary: #00ffa3;
   --accent-danger: #FF3B30;
   --bg-main: #0a0b0f;
@@ -384,7 +385,7 @@
 button { font-family: inherit; font-weight: 600; cursor: pointer; transition: var(--transition-smooth); }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: var(--accent-gradient);
   color: white;
   border: none;
   padding: 10px 20px;

@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
-import { Layers, CheckCircle2, ChevronRight, FileText, Printer, Send } from 'lucide-react';
+import { Layers, CheckCircle, Circle, ChevronRight, FileText, Printer, Send } from 'lucide-react';
 
 const AssemblyEngineView = ({ projectData, activeProject }) => {
-    const [selectedSection, setSelectedSection] = useState(null);
+    const [selectedSections, setSelectedSections] = useState([]);
+
+    const toggleSection = (id) => {
+        if (selectedSections.includes(id)) {
+            setSelectedSections(selectedSections.filter(s => s !== id));
+        } else {
+            setSelectedSections([...selectedSections, id]);
+        }
+    };
 
     // Mock sections for UI demonstration (Eventually these will be sections marked 100% complete)
     const mockReadySections = [
@@ -14,18 +22,23 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
 
     return (
         <div className="tracker-container animate-fade-in py-8 px-6 lg:px-12 max-w-[1600px] mx-auto h-[calc(100vh-80px)] flex flex-col">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8 shrink-0">
-                <div>
-                    <h1 className="text-3xl font-black text-white uppercase tracking-widest flex items-center gap-4">
-                        <Layers className="text-accent-primary" size={32} />
-                        ASSEMBLE SUBMITTAL
-                    </h1>
-                    <p className="text-text-muted mt-2 tracking-widest text-xs uppercase font-bold">
-                        {activeProject?.name || 'Active Project'} • Publishing Hub
-                    </p>
-                </div>
+            <svg width="0" height="0" className="absolute">
+                <defs>
+                    <linearGradient id="assembly-icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#F59E0B" />
+                        <stop offset="100%" stopColor="#EA580C" />
+                    </linearGradient>
+                </defs>
+            </svg>
+            {/* COMMAND CENTER HEADER */}
+            <div className="px-4 shrink-0" style={{ marginBottom: '1.5rem' }}>
+                <h1 className="text-4xl font-black tracking-tighter italic uppercase" style={{ marginBottom: '4px' }}>
+                    ASSEMBLE <span className="text-accent-primary">SUBMITTAL</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{activeProject?.name || 'ACTIVE PROJECT'}</span>
+                </h1>
+                
+                <p className="text-text-muted font-black uppercase tracking-[0.3em] text-[11px] opacity-60">
+                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> PUBLISHING HUB
+                </p>
             </div>
 
             {/* Split Screen Grid */}
@@ -33,59 +46,68 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
                 
                 {/* Left Column: Sections Ready */}
                 <div className="col-span-12 lg:col-span-4 flex flex-col h-full prism-card overflow-hidden border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl relative">
-                    <div className="p-6 border-b border-white/5 bg-black/20 shrink-0">
-                        <h2 className="text-sm font-black uppercase tracking-widest text-accent-primary flex items-center gap-2">
-                            <CheckCircle2 size={16} /> Ready to Assemble
-                        </h2>
+                    <div className="p-6 shrink-0 flex items-center justify-between">
+                        <h2 className="text-sm font-black uppercase tracking-[0.2em]">Ready to Assemble</h2>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
                         {mockReadySections.map(section => (
-                            <button 
+                            <div 
                                 key={section.id}
-                                onClick={() => setSelectedSection(section.id)}
-                                className={`w-full text-left p-4 rounded-xl border transition-all ${
-                                    selectedSection === section.id 
-                                    ? 'bg-accent-primary/10 border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                    : 'bg-white/5 border-white/5 hover:bg-white/10'
-                                }`}
+                                onClick={() => toggleSection(section.id)}
+                                className="group flex flex-row items-center justify-start rounded-lg cursor-pointer transition-all duration-200 bg-transparent border border-transparent hover:bg-white/5"
+                                style={{ paddingTop: '16px', paddingBottom: '16px', paddingLeft: '24px', paddingRight: '24px' }}
                             >
-                                <div className="text-xs font-black uppercase text-accent-primary tracking-widest mb-1">{section.id}</div>
-                                <div className="text-sm font-bold text-white truncate mb-2">{section.title}</div>
-                                <div className="text-[10px] text-text-muted uppercase tracking-widest flex items-center gap-2">
-                                    <FileText size={12} /> {section.pages} Pages Locked
+                                <div className="flex-shrink-0" style={{ marginRight: '40px' }}>
+                                    {selectedSections.includes(section.id) ? (
+                                        <CheckCircle size={26} color="url(#assembly-icon-gradient)" className="transition-all duration-300 scale-110" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} />
+                                    ) : (
+                                        <Circle size={26} className="text-white/20 transition-all duration-300 group-hover:scale-110 group-hover:text-white/40" />
+                                    )}
                                 </div>
-                            </button>
+                                
+                                <div className="flex flex-col justify-center gap-1.5 truncate">
+                                    <div className={`text-[15px] font-black uppercase tracking-widest ${selectedSections.includes(section.id) ? 'text-white' : 'text-white/60 group-hover:text-white/90 transition-colors'}`}>{section.id}</div>
+                                    <div className={`text-[12px] uppercase font-bold tracking-widest truncate ${selectedSections.includes(section.id) ? 'text-accent-primary' : 'text-text-muted'}`}>{section.title}</div>
+                                    <div className="text-[9px] text-text-muted font-black uppercase tracking-[0.2em] flex items-center gap-2 mt-1">
+                                        <FileText size={10} className={selectedSections.includes(section.id) ? 'text-accent-primary/70' : 'text-text-muted'} /> {section.pages} Pages Locked
+                                    </div>
+                                </div>
+                            </div>
                         ))}
                     </div>
                 </div>
 
                 {/* Right Column: PDF Preview Canvas */}
-                <div className="col-span-12 lg:col-span-8 flex flex-col h-full prism-card overflow-hidden border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl relative">
-                    {selectedSection ? (
+                <div className="col-span-12 lg:col-span-8 flex flex-col h-full relative">
+                    {selectedSections.length > 0 ? (
                         <>
                             {/* Toolbar */}
-                            <div className="h-16 border-b border-white/10 bg-white/5 flex items-center justify-between px-6 shrink-0">
+                            <div className="h-16 flex items-center justify-between px-6 shrink-0">
                                 <div className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest">
                                     <Printer size={16} className="text-accent-primary" /> Preview Canvas
                                 </div>
                                 <div className="flex gap-4">
                                     <button className="btn-primary !px-6 flex items-center gap-2">
-                                        <Send size={16} /> Send Submittal
+                                        <Send size={16} /> Compile & Send ({selectedSections.length})
                                     </button>
                                 </div>
                             </div>
                             
                             {/* Canvas Zone */}
-                            <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8 bg-black/20">
+                            <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8">
                                 {/* Fake Cover Page */}
                                 <div className="w-full max-w-2xl aspect-[8.5/11] bg-white text-black p-12 shadow-xl relative flex flex-col justify-center items-center text-center">
                                     <h1 className="text-4xl font-black uppercase mb-4 tracking-widest">Submittal Package</h1>
                                     <h2 className="text-xl font-bold uppercase text-gray-500 tracking-widest">{activeProject?.name || 'Project Name'}</h2>
                                     <div className="w-24 h-1 bg-black my-8"></div>
-                                    <h3 className="text-2xl font-black uppercase text-red-600 mb-2">{selectedSection}</h3>
+                                    <h3 className="text-2xl font-black uppercase text-red-600 mb-2">
+                                        {selectedSections.length === 1 ? selectedSections[0] : `${selectedSections.length} Divisions Selected`}
+                                    </h3>
                                     <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">
-                                        {mockReadySections.find(s => s.id === selectedSection)?.title}
+                                        {selectedSections.length === 1 
+                                            ? mockReadySections.find(s => s.id === selectedSections[0])?.title 
+                                            : 'Multi-Batch Package Compilation'}
                                     </p>
                                 </div>
                                 

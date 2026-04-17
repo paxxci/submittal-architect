@@ -82,37 +82,54 @@ const WorkbenchView = ({
 
     return (
         <div className="workbench-root animate-fade-in flex flex-col h-full overflow-hidden">
-            <div className="workbench-header flex items-center gap-4 mb-6 shrink-0">
-                <button className="btn-icon" onClick={() => setView('dashboard')}><LayoutDashboard size={20} /></button>
-                <div>
-                    <h2 className="text-xl font-extrabold">{projectData?.name}</h2>
-                    <p className="text-xs text-text-muted">Division {selectedDivision?.id} - {selectedDivision?.title} Cut Sheet Finder</p>
-                </div>
+            {/* COMMAND CENTER HEADER */}
+            <div className="shrink-0" style={{ marginBottom: '1.5rem' }}>
+                <h1 className="text-4xl font-black tracking-tighter italic uppercase" style={{ marginBottom: '4px' }}>
+                    CUT SHEET <span className="text-accent-primary">FINDER</span> <span className="text-white/20 mx-4 font-light">/</span> <span className="text-white">{projectData?.name || 'ACTIVE PROJECT'}</span>
+                </h1>
+                <p className="text-text-muted font-black uppercase tracking-[0.3em] text-[11px] opacity-60">
+                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> DIVISION {selectedDivision?.id} - {(selectedDivision?.title || '').toUpperCase()}
+                </p>
             </div>
 
-            {/* Division Tabs */}
-            <div className="flex flex-row flex-nowrap gap-3 mb-8 border-b border-border-subtle pb-6 overflow-x-auto custom-scrollbar font-mono shrink-0">
-                {(projectData?.divisions || []).map(div => (
-                    <div
-                        key={div.id}
-                        onClick={() => {
-                            setSelectedDivision(div);
-                            const firstSpecInDiv = (projectData?.recentItems || []).find(item => item.id.startsWith(div.id));
-                            if (firstSpecInDiv) setSelectedSpec(firstSpecInDiv);
-                        }}
-                        className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${
-                            selectedDivision?.id === div.id 
-                            ? 'active ring-2 ring-accent-primary' 
-                            : 'hover:border-accent-primary/50'
-                        }`}
-                        title={`${div.title} (${div.tasks} items)`}
-                    >
-                        <h4 className="font-bold text-[10px] uppercase opacity-70">DIV {div.id}</h4>
-                        <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full">
-                            {div.title.split(' ')[0]}
+            {/* Division Tabs & Spec Header */}
+            <div className="flex justify-between items-end mb-6 border-b border-border-subtle pb-6 shrink-0 w-full overflow-hidden">
+                {/* Left Side: Division Tabs */}
+                <div className="flex flex-row flex-nowrap gap-3 overflow-x-auto custom-scrollbar font-mono shrink-0">
+                    {(projectData?.divisions || []).map(div => (
+                        <div
+                            key={div.id}
+                            onClick={() => {
+                                setSelectedDivision(div);
+                                const firstSpecInDiv = (projectData?.recentItems || []).find(item => item.id.startsWith(div.id));
+                                if (firstSpecInDiv) setSelectedSpec(firstSpecInDiv);
+                            }}
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${
+                                selectedDivision?.id === div.id 
+                                ? 'active ring-2 ring-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]' 
+                                : 'hover:border-accent-primary/50'
+                            }`}
+                            title={`${div.title} (${div.tasks} items)`}
+                        >
+                            <h4 className="font-bold text-[10px] uppercase opacity-70">DIV {div.id}</h4>
+                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full">
+                                {div.title.split(' ')[0]}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Right Side: Global Spec Header */}
+                {selectedSpec && (
+                    <div className="flex items-center gap-4 pl-8 shrink min-w-0 pb-1">
+                        <h3 className="text-xl font-extrabold tracking-tight truncate min-w-0 text-white">
+                            {selectedSpec.id.slice(0,2)} {selectedSpec.id.slice(2,4)} {selectedSpec.id.slice(4)} - {selectedSpec.title}
+                        </h3>
+                        <span className="badge badge-green bg-green-500/10 text-green-500 border border-green-500/30 px-3 py-1 rounded-full shrink-0 uppercase tracking-widest text-[9px] font-black shadow-[0_0_10px_rgba(0,255,163,0.1)]">
+                            <ShieldCheck size={12} className="inline mr-1.5 relative -top-[1px]" /> VERIFIED
                         </span>
                     </div>
-                ))}
+                )}
             </div>
 
             <div className="workbench-grid flex-1 min-h-0">
@@ -122,8 +139,8 @@ const WorkbenchView = ({
                         onClick={() => {
                             onAddSection();
                         }}
-                        className="btn-primary w-full flex items-center justify-center gap-3 mb-4 shadow-[0_0_15px_rgba(255,107,0,0.3)] transition-all hover:brightness-125"
-                        style={{ height: '48px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}
+                        className="btn-primary w-full flex items-center justify-center gap-3 mb-6 shadow-[0_0_15px_rgba(234,88,12,0.4)] transition-all hover:brightness-125"
+                        style={{ marginTop: '24px', transform: 'translateY(-12px)', height: '44px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}
                     >
                         <Plus size={20} /> Add Missing Section
                     </button>
@@ -177,7 +194,7 @@ const WorkbenchView = ({
                             </div>
                             <h4 className="font-bold text-sm leading-tight mb-3">{item.title}</h4>
                             
-                            <div className="flex flex-col gap-1 mt-auto bg-bg-deep rounded p-3 border border-border-subtle">
+                            <div className="flex flex-col gap-1 mt-auto pt-4">
                                 <div className="flex justify-between items-center w-full text-xs">
                                     <span className="text-text-muted">Part 1</span>
                                     <span className={`font-mono font-bold ${p1Progress === 100 ? 'text-accent-secondary' : p1Progress > 0 ? 'text-accent-primary' : 'text-text-muted'}`}>&nbsp;&nbsp;{p1Progress}%</span>
@@ -216,14 +233,7 @@ const WorkbenchView = ({
                 {/* Right side: Detail View */}
                 {selectedSpec ? (
                 <div className="workbench-main prism-card flex flex-col h-full">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex flex-col gap-2">
-                            <h3 className="text-lg font-bold">{selectedSpec?.id.slice(0,2)} {selectedSpec?.id.slice(2,4)} {selectedSpec?.id.slice(4)} - {selectedSpec?.title}</h3>
-                        </div>
-                        <div className="flex gap-2">
-                            <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
-                        </div>
-                    </div>
+
                     {(() => {
                         const handleMassComplete = (partId, rawText) => {
                             if (!rawText) return;
@@ -256,52 +266,81 @@ const WorkbenchView = ({
                             toggleBlockCompletion(newIds, 'DONE');
                         }
                     };
+                        const isPartFullyComplete = (partId, rawText) => {
+                            if (!rawText) return false;
+                            const lines = typeof rawText === 'string' ? rawText.split('\n') : [];
+                            let blockCount = 0;
+                            let currentBlockLines = 0;
+                            lines.forEach(line => {
+                                const trimmed = line.trim();
+                                if (!trimmed) return;
+                                if (/^[1-3]\.[0-9]{2}/.test(trimmed)) {
+                                    if (currentBlockLines > 0) blockCount++;
+                                    currentBlockLines = 1;
+                                } else {
+                                    currentBlockLines++;
+                                }
+                            });
+                            if (currentBlockLines > 0) blockCount++;
+                            if (blockCount === 0) return false;
+                            
+                            for (let i = 0; i < blockCount; i++) {
+                                const id = `${selectedSpec?.id}___${partId}___${i}`;
+                                if (!completedBlocks?.includes(id)) return false;
+                            }
+                            return true;
+                        };
+
+                        const part1Complete = isPartFullyComplete('part1', selectedSpec?.part1);
+                        const part2Complete = isPartFullyComplete('part2', selectedSpec?.part2?.rawText);
+                        const part3Complete = isPartFullyComplete('part3', selectedSpec?.part3);
 
                     return (
                         <>
-                    <div className="flex flex-row flex-nowrap gap-3 mb-6 font-mono">
+                    <div className="flex flex-row flex-nowrap mt-0 gap-9 mb-6 font-mono">
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part1' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`!w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !py-2 !px-1 relative group rounded-lg border ${selectedPart === 'part1' ? 'bg-transparent border-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]' : 'bg-transparent border-transparent hover:border-accent-primary/40'}`}
                             onClick={() => setSelectedPart('part1')}
                         >
                             <button 
-                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                className={`absolute -top-2 -right-2 transition-all p-1 shadow-lg rounded-full z-10 hover:scale-110 ${part1Complete ? 'opacity-100 text-green-500 bg-green-500/10 border border-green-500/30' : 'opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle hover:border-accent-secondary/50'}`}
                                 onClick={(e) => { e.stopPropagation(); handleMassComplete('part1', selectedSpec?.part1); }}
                                 title="Toggle all blocks"
                             >
                                 <CheckCircle2 size={16} />
                             </button>
-                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 1</h4>
-                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">General</span>
+                            <h4 className={`font-bold text-[10px] uppercase ${selectedPart === 'part1' ? 'text-accent-primary' : 'opacity-70 group-hover:text-accent-primary/80'}`}>PART 1</h4>
+                            <span className={`text-[9px] mt-0.5 uppercase tracking-tighter ${selectedPart === 'part1' ? 'text-accent-primary/70' : 'text-text-muted group-hover:text-text-muted'}`}>General</span>
                         </div>
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part2' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`!w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !py-2 !px-1 relative group rounded-lg border ${selectedPart === 'part2' ? 'bg-transparent border-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]' : 'bg-transparent border-transparent hover:border-accent-primary/40'}`}
                             onClick={() => setSelectedPart('part2')}
                         >
                             <button 
-                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                className={`absolute -top-2 -right-2 transition-all p-1 shadow-lg rounded-full z-10 hover:scale-110 ${part2Complete ? 'opacity-100 text-green-500 bg-green-500/10 border border-green-500/30' : 'opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle hover:border-accent-secondary/50'}`}
                                 onClick={(e) => { e.stopPropagation(); handleMassComplete('part2', selectedSpec?.part2?.rawText); }}
                                 title="Toggle all blocks"
                             >
                                 <CheckCircle2 size={16} />
                             </button>
-                            {selectedPart === 'part2' && <div className="absolute top-1 right-1 pointer-events-none w-1 h-1 rounded-full bg-accent-primary animate-pulse opacity-100 group-hover:opacity-0 transition-opacity"></div>}
-                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 2</h4>
-                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Products</span>
+                            <h4 className={`font-bold text-[10px] uppercase ${selectedPart === 'part2' ? 'text-accent-primary' : 'opacity-70 group-hover:text-accent-primary/80'}`}>PART 2</h4>
+                            <span className={`text-[9px] mt-0.5 uppercase tracking-tighter ${selectedPart === 'part2' ? 'text-accent-primary/70' : 'text-text-muted group-hover:text-text-muted'}`}>Products</span>
                         </div>
+
+
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part3' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`!w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !py-2 !px-1 relative group rounded-lg border ${selectedPart === 'part3' ? 'bg-transparent border-accent-primary shadow-[0_0_15px_rgba(255,107,0,0.15)]' : 'bg-transparent border-transparent hover:border-accent-primary/40'}`}
                             onClick={() => setSelectedPart('part3')}
                         >
                             <button 
-                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                className={`absolute -top-2 -right-2 transition-all p-1 shadow-lg rounded-full z-10 hover:scale-110 ${part3Complete ? 'opacity-100 text-green-500 bg-green-500/10 border border-green-500/30' : 'opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle hover:border-accent-secondary/50'}`}
                                 onClick={(e) => { e.stopPropagation(); handleMassComplete('part3', selectedSpec?.part3); }}
                                 title="Toggle all blocks"
                             >
                                 <CheckCircle2 size={16} />
                             </button>
-                            <h4 className="font-bold text-[10px] uppercase opacity-70">PART 3</h4>
-                            <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Execution</span>
+                            <h4 className={`font-bold text-[10px] uppercase ${selectedPart === 'part3' ? 'text-accent-primary' : 'opacity-70 group-hover:text-accent-primary/80'}`}>PART 3</h4>
+                            <span className={`text-[9px] mt-0.5 uppercase tracking-tighter ${selectedPart === 'part3' ? 'text-accent-primary/70' : 'text-text-muted group-hover:text-text-muted'}`}>Execution</span>
                         </div>
                     </div>
                         </>
