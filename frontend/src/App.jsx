@@ -690,30 +690,36 @@ function App() {
         });
     }
 
-    const toggleBlockCompletion = async (blockId, type = 'DONE') => {
+    const toggleBlockCompletion = async (blockIds, type = 'DONE') => {
+        const idsArray = Array.isArray(blockIds) ? blockIds : [blockIds];
         let newCompleted = [...completedBlocks];
         let newNA = [...naBlocks];
 
-        if (type === 'NA') {
-            if (newNA.includes(blockId)) {
-                newNA = newNA.filter(id => id !== blockId);
+        idsArray.forEach(blockId => {
+            if (type === 'NA') {
+                if (newNA.includes(blockId)) {
+                    // if mass completing but it's already in the target array, we don't necessarily want to toggle it off if we are enforcing a mass action, but standard toggle behavior is fine for now. Actually, if mass clicking, users generally expect it to FORCE complete, not toggle if already there.
+                    // Wait, standard toggle behavior is fine. If they want to toggle all off, they click it again.
+                    newNA = newNA.filter(id => id !== blockId);
+                } else {
+                    newNA = [...newNA, blockId];
+                    newCompleted = newCompleted.filter(id => id !== blockId);
+                }
             } else {
-                newNA = [...newNA, blockId];
-                newCompleted = newCompleted.filter(id => id !== blockId);
+                if (newCompleted.includes(blockId)) {
+                    newCompleted = newCompleted.filter(id => id !== blockId);
+                } else {
+                    newCompleted = [...newCompleted, blockId];
+                    newNA = newNA.filter(id => id !== blockId);
+                }
             }
-        } else {
-            if (newCompleted.includes(blockId)) {
-                newCompleted = newCompleted.filter(id => id !== blockId);
-            } else {
-                newCompleted = [...newCompleted, blockId];
-                newNA = newNA.filter(id => id !== blockId);
-            }
-        }
+        });
 
         setCompletedBlocks(newCompleted);
         setNaBlocks(newNA);
 
-        const specId = blockId.split('___')[0];
+        if (idsArray.length === 0) return;
+        const specId = idsArray[0].split('___')[0];
         const section = projectData?.recentItems.find(s => s.id === specId);
         if (section?.dbId) {
             await supabase
@@ -1479,12 +1485,11 @@ function App() {
                 </div>,
                 document.body
             )}
-            <div className="app-shell bg-bg-deep relative overflow-hidden">
+            <div className="app-shell bg-bg-deep relative overflow-hidden" style={view !== 'portfolio' ? { gridTemplateRows: '0px 1fr' } : {}}>
                 {/* Glassmorphism Refraction Orbs */}
                 <div className="fixed top-[-10%] left-[-10%] w-[600px] h-[600px] bg-accent-primary/20 rounded-full blur-[140px] pointer-events-none" />
                 <div className="fixed bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-white/5 rounded-full blur-[120px] pointer-events-none" />
 
-                {/* Nav Rail */}
                 {/* Nav Rail */}
                 <aside className="nav-rail relative z-20">
                     <div className="logo-area">
@@ -1557,15 +1562,17 @@ function App() {
                 </aside>
 
                 {/* Top Bar */}
-                <header className="top-bar">
-                    <div className="search-field">
-                        <Search size={16} className="text-text-muted" />
-                        <input type="text" placeholder="Search specifications, vendors, or items..." />
-                    </div>
-                    <div className="header-actions">
-                        <button className="btn-icon"><Bell size={20} /></button>
-                    </div>
-                </header>
+                {view === 'portfolio' && (
+                    <header className="top-bar">
+                        <div className="search-field">
+                            <Search size={16} className="text-text-muted" />
+                            <input type="text" placeholder="Search specifications, vendors, or items..." />
+                        </div>
+                        <div className="header-actions">
+                            <button className="btn-icon"><Bell size={20} /></button>
+                        </div>
+                    </header>
+                )}
 
                 {/* Main Stage */}
                 <main className="main-stage">

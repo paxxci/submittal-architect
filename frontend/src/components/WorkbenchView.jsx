@@ -82,7 +82,7 @@ const WorkbenchView = ({
 
     return (
         <div className="workbench-root animate-fade-in flex flex-col h-full overflow-hidden">
-            <div className="workbench-header flex items-center gap-4 mb-6">
+            <div className="workbench-header flex items-center gap-4 mb-6 shrink-0">
                 <button className="btn-icon" onClick={() => setView('dashboard')}><LayoutDashboard size={20} /></button>
                 <div>
                     <h2 className="text-xl font-extrabold">{projectData?.name}</h2>
@@ -91,7 +91,7 @@ const WorkbenchView = ({
             </div>
 
             {/* Division Tabs */}
-            <div className="flex flex-row flex-nowrap gap-3 mb-10 border-b border-border-subtle pb-6 overflow-x-auto custom-scrollbar font-mono">
+            <div className="flex flex-row flex-nowrap gap-3 mb-8 border-b border-border-subtle pb-6 overflow-x-auto custom-scrollbar font-mono shrink-0">
                 {(projectData?.divisions || []).map(div => (
                     <div
                         key={div.id}
@@ -115,24 +115,51 @@ const WorkbenchView = ({
                 ))}
             </div>
 
-            <div className="workbench-grid">
+            <div className="workbench-grid flex-1 min-h-0">
                 {/* Left side: Spec List */}
                 <div className="workbench-sidebar custom-scrollbar h-full overflow-y-auto pr-2">
                     <button
                         onClick={() => {
-                            
                             onAddSection();
                         }}
-                        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', borderRadius: '10px', fontSize: '12px', fontWeight: 700, cursor: 'pointer', border: '1px dashed var(--border-subtle)', background: 'transparent', color: 'var(--text-muted)', transition: 'all 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-primary)'; e.currentTarget.style.color = 'var(--accent-primary)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                        className="btn-primary w-full flex items-center justify-center gap-3 mb-4 shadow-[0_0_15px_rgba(255,107,0,0.3)] transition-all hover:brightness-125"
+                        style={{ height: '48px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}
                     >
-                        <Plus size={14} /> Add Missing Section
+                        <Plus size={20} /> Add Missing Section
                     </button>
                     {(projectData?.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
-                        const p1Progress = item.part1_progress || 0;
-                        const p2Progress = item.part2_progress || 0;
-                        const p3Progress = item.part3_progress || 0;
+                        const computeDynamicProgress = (rawText, partId) => {
+                            if (!rawText) return 0;
+                            const lines = rawText.split('\n');
+                            let blockCount = 0;
+                            let currentBlockLines = 0;
+                            
+                            lines.forEach(line => {
+                                const trimmed = line.trim();
+                                if (!trimmed) return;
+                                if (/^[1-3]\.[0-9]{2}/.test(trimmed)) {
+                                    if (currentBlockLines > 0) blockCount++;
+                                    currentBlockLines = 1;
+                                } else {
+                                    currentBlockLines++;
+                                }
+                            });
+                            if (currentBlockLines > 0) blockCount++;
+                            if (blockCount === 0) return 0;
+                            
+                            let completed = 0;
+                            for (let i = 0; i < blockCount; i++) {
+                                const id = `${item.id}___${partId}___${i}`;
+                                if (completedBlocks?.includes(id) || naBlocks?.includes(id)) {
+                                    completed++;
+                                }
+                            }
+                            return Math.round((completed / blockCount) * 100);
+                        };
+
+                        const p1Progress = computeDynamicProgress(item.part1, 'part1') || item.part1_progress || 0;
+                        const p2Progress = computeDynamicProgress(item.part2?.rawText || '', 'part2') || item.part2_progress || 0;
+                        const p3Progress = computeDynamicProgress(item.part3, 'part3') || item.part3_progress || 0;
                         
                         return (
                         <div 
@@ -197,30 +224,89 @@ const WorkbenchView = ({
                             <span className="badge badge-green"><ShieldCheck size={12} className="inline mr-1" /> Verified</span>
                         </div>
                     </div>
+                    {(() => {
+                        const handleMassComplete = (partId, rawText) => {
+                            if (!rawText) return;
+                        const lines = rawText.split('\n');
+                        let blockCount = 0;
+                        let currentBlockLines = 0;
+                        
+                        lines.forEach(line => {
+                            const trimmed = line.trim();
+                            if (!trimmed) return;
+                            if (/^[1-3]\.[0-9]{2}/.test(trimmed)) {
+                                if (currentBlockLines > 0) blockCount++;
+                                currentBlockLines = 1;
+                            } else {
+                                currentBlockLines++;
+                            }
+                        });
+                        if (currentBlockLines > 0) blockCount++;
+                        if (blockCount === 0) return;
+                        
+                        const newIds = [];
+                        for (let i = 0; i < blockCount; i++) {
+                            newIds.push(`${selectedSpec?.id}___${partId}___${i}`);
+                        }
+                        
+                        const remaining = newIds.filter(id => !completedBlocks?.includes(id));
+                        if (remaining.length > 0) {
+                            toggleBlockCompletion(remaining, 'DONE');
+                        } else {
+                            toggleBlockCompletion(newIds, 'DONE');
+                        }
+                    };
+
+                    return (
+                        <>
                     <div className="flex flex-row flex-nowrap gap-3 mb-6 font-mono">
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === 'part1' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part1' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
                             onClick={() => setSelectedPart('part1')}
                         >
+                            <button 
+                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                onClick={(e) => { e.stopPropagation(); handleMassComplete('part1', selectedSpec?.part1); }}
+                                title="Toggle all blocks"
+                            >
+                                <CheckCircle2 size={16} />
+                            </button>
                             <h4 className="font-bold text-[10px] uppercase opacity-70">PART 1</h4>
                             <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">General</span>
                         </div>
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative ${selectedPart === 'part2' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part2' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
                             onClick={() => setSelectedPart('part2')}
                         >
+                            <button 
+                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                onClick={(e) => { e.stopPropagation(); handleMassComplete('part2', selectedSpec?.part2?.rawText); }}
+                                title="Toggle all blocks"
+                            >
+                                <CheckCircle2 size={16} />
+                            </button>
+                            {selectedPart === 'part2' && <div className="absolute top-1 right-1 pointer-events-none w-1 h-1 rounded-full bg-accent-primary animate-pulse opacity-100 group-hover:opacity-0 transition-opacity"></div>}
                             <h4 className="font-bold text-[10px] uppercase opacity-70">PART 2</h4>
                             <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Products</span>
-                            {selectedPart === 'part2' && <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-accent-primary animate-pulse"></div>}
                         </div>
                         <div 
-                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 ${selectedPart === 'part3' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                            className={`item-card prism-card !w-24 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-2 relative group ${selectedPart === 'part3' ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
                             onClick={() => setSelectedPart('part3')}
                         >
+                            <button 
+                                className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-all p-1 text-text-muted hover:text-accent-secondary bg-bg-deep border border-border-subtle shadow-lg rounded-full z-10 hover:scale-110 hover:border-accent-secondary/50"
+                                onClick={(e) => { e.stopPropagation(); handleMassComplete('part3', selectedSpec?.part3); }}
+                                title="Toggle all blocks"
+                            >
+                                <CheckCircle2 size={16} />
+                            </button>
                             <h4 className="font-bold text-[10px] uppercase opacity-70">PART 3</h4>
                             <span className="text-[9px] text-text-muted mt-0.5 uppercase tracking-tighter">Execution</span>
                         </div>
                     </div>
+                        </>
+                    );
+                    })()}
                     <div className="grid grid-cols-2 gap-8 flex-1 w-full pb-32">
                         {getCalculatedResponsibility(selectedSpec?.id) === 'NA' ? (
                             <div className="col-span-2 flex flex-col items-center justify-center p-20 opacity-50 grayscale animate-fade-in">
