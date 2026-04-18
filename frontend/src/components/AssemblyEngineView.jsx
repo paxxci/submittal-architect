@@ -1,24 +1,39 @@
 import React, { useState } from 'react';
 import { Layers, CheckCircle, Circle, ChevronRight, FileText, Printer, Send } from 'lucide-react';
 
-const AssemblyEngineView = ({ projectData, activeProject }) => {
+const AssemblyEngineView = ({ projectData, activeProject, onUpdateTrackerState }) => {
     const [selectedSections, setSelectedSections] = useState([]);
 
     const toggleSection = (id) => {
         if (selectedSections.includes(id)) {
-            setSelectedSections(selectedSections.filter(s => s !== id));
+            setSelectedSections([]);
         } else {
-            setSelectedSections([...selectedSections, id]);
+            setSelectedSections([id]);
         }
     };
 
-    // Mock sections for UI demonstration (Eventually these will be sections marked 100% complete)
-    const mockReadySections = [
-        { id: '26 05 19', title: 'Low-Voltage Electrical Power Conductors', pages: 14 },
-        { id: '26 05 33', title: 'Raceways and Boxes for Electrical Systems', pages: 8 },
-        { id: '26 05 53', title: 'Identification for Electrical Systems', pages: 3 },
-        { id: '26 27 26', title: 'Wiring Devices', pages: 22 },
-    ];
+    // Force a local sort that strips spaces out of CSI Codes to ensure deterministic numerical sequencing (e.g. 26 05 33 -> 260533)
+    const readySections = projectData?.recentItems 
+        ? [...projectData.recentItems].sort((a, b) => (a.id || '').replace(/\s/g, '').localeCompare((b.id || '').replace(/\s/g, ''), undefined, { numeric: true })) 
+        : [];
+
+    const handleConfirmSection = async () => {
+        if (selectedSections.length === 0) return;
+        const activeItem = readySections.find(s => s.id === selectedSections[0]);
+        if (activeItem && onUpdateTrackerState) {
+             const newStatus = activeItem.tracker_status === 'Verified' ? 'Working' : 'Verified';
+             await onUpdateTrackerState(activeItem.dbId, newStatus);
+        }
+    };
+
+    const handleCompileAndSend = async () => {
+        if (selectedSections.length === 0) return;
+        const activeItem = readySections.find(s => s.id === selectedSections[0]);
+        if (activeItem && onUpdateTrackerState) {
+             await onUpdateTrackerState(activeItem.dbId, 'Sent');
+             alert(`Submittal Package for ${activeItem.id} compiled and queued for distribution!`);
+        }
+    };
 
     return (
         <div className="tracker-container animate-fade-in py-8 px-6 lg:px-12 max-w-[1600px] mx-auto h-[calc(100vh-80px)] flex flex-col">
@@ -51,7 +66,7 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
                     </div>
                     
                     <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
-                        {mockReadySections.map(section => (
+                        {readySections.map(section => (
                             <div 
                                 key={section.id}
                                 onClick={() => toggleSection(section.id)}
@@ -70,7 +85,7 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
                                     <div className={`text-[15px] font-black uppercase tracking-widest ${selectedSections.includes(section.id) ? 'text-white' : 'text-white/60 group-hover:text-white/90 transition-colors'}`}>{section.id}</div>
                                     <div className={`text-[12px] uppercase font-bold tracking-widest truncate ${selectedSections.includes(section.id) ? 'text-accent-primary' : 'text-text-muted'}`}>{section.title}</div>
                                     <div className="text-[9px] text-text-muted font-black uppercase tracking-[0.2em] flex items-center gap-2 mt-1">
-                                        <FileText size={10} className={selectedSections.includes(section.id) ? 'text-accent-primary/70' : 'text-text-muted'} /> {section.pages} Pages Locked
+                                        <FileText size={10} className={selectedSections.includes(section.id) ? 'text-accent-primary/70' : 'text-text-muted'} /> {section.pages || 'Payload'} Pages Locked
                                     </div>
                                 </div>
                             </div>
@@ -88,7 +103,23 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
                                     <Printer size={16} className="text-accent-primary" /> Preview Canvas
                                 </div>
                                 <div className="flex gap-4">
-                                    <button className="btn-primary !px-6 flex items-center gap-2">
+                                    <div 
+                                        onClick={handleConfirmSection}
+                                        className={`flex items-center gap-2 cursor-pointer transition-all duration-300 ${
+                                            (readySections.find(s => s.id === selectedSections[0])?.tracker_status === 'Verified' || readySections.find(s => s.id === selectedSections[0])?.tracker_status === 'Sent')
+                                             ? 'text-white' 
+                                             : 'text-white/50 hover:text-white/80'
+                                        }`}
+                                    >
+                                        {(readySections.find(s => s.id === selectedSections[0])?.tracker_status === 'Verified' || readySections.find(s => s.id === selectedSections[0])?.tracker_status === 'Sent') ? (
+                                            <CheckCircle size={18} className="text-accent-secondary drop-shadow-[0_0_8px_rgba(0,255,163,0.8)]" />
+                                        ) : (
+                                            <Circle size={18} className="text-white/20" />
+                                        )}
+                                        <span className="text-xs font-black tracking-widest uppercase">Verified</span>
+                                    </div>
+
+                                    <button onClick={handleCompileAndSend} className="btn-primary !px-6 flex items-center gap-2">
                                         <Send size={16} /> Compile & Send ({selectedSections.length})
                                     </button>
                                 </div>
@@ -106,7 +137,7 @@ const AssemblyEngineView = ({ projectData, activeProject }) => {
                                     </h3>
                                     <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">
                                         {selectedSections.length === 1 
-                                            ? mockReadySections.find(s => s.id === selectedSections[0])?.title 
+                                            ? readySections.find(s => s.id === selectedSections[0])?.title 
                                             : 'Multi-Batch Package Compilation'}
                                     </p>
                                 </div>

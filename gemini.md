@@ -22,6 +22,7 @@
     "fallback_action": "pivot_to_manufacturer_site",
     "interrogation_flow": "Trigger PM questions for items below confidence_threshold",
     "architecture": "Modular-First (Plug-and-play for new Divisions)",
+    "ecosystem_strategy": "Strict Decoupling: Submittal Architect (The Factory) and Submittal Tracker (The Logistics Network) must remain independent codebases. Connect via API Bridge for Master Suite users ONLY. Never merge.",
     "persistence_layer": "Supabase (Project ID: ecnrtylraaddmwmatsrs)",
     "shared_drive_path": "G:\\My Drive\\Submittal Architect",
     "responsibility_mapping": ["Self-Perform", "Vendor-Managed", "Outside-Scope"],

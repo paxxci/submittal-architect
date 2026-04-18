@@ -144,7 +144,7 @@ const WorkbenchView = ({
                     >
                         <Plus size={20} /> Add Missing Section
                     </button>
-                    {(projectData?.recentItems || []).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
+                    {[...(projectData?.recentItems || [])].sort((a, b) => (a.id || '').replace(/\s/g, '').localeCompare((b.id || '').replace(/\s/g, ''), undefined, { numeric: true })).filter(item => item.id.startsWith(selectedDivision?.id)).map(item => {
                         const computeDynamicProgress = (rawText, partId) => {
                             if (!rawText) return 0;
                             const lines = rawText.split('\n');

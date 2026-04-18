@@ -261,7 +261,7 @@ function App() {
 
             setProjectData(prev => {
                 const currentItems = prev?.recentItems || [];
-                const updatedItems = [...currentItems, newItem];
+                const updatedItems = [...currentItems, newItem].sort((a, b) => (a.id || '').replace(/\s/g, '').localeCompare((b.id || '').replace(/\s/g, ''), undefined, { numeric: true, sensitivity: 'base' }));
                 return {
                     ...(prev || {}),
                     recentItems: updatedItems,
@@ -354,7 +354,7 @@ function App() {
             ? sections.filter(s => activeFilter.some(d => s.section_number?.replace(/\s/g,'').startsWith(d)))
             : (sections || []);
 
-        const uiItems = mapShreddedDataToUI(filteredSections);
+        const uiItems = mapShreddedDataToUI(filteredSections).sort((a, b) => (a.id || '').replace(/\s/g, '').localeCompare((b.id || '').replace(/\s/g, ''), undefined, { numeric: true, sensitivity: 'base' }));
 
         const updatedData = {
             ...project,
@@ -391,7 +391,7 @@ function App() {
     };
     
     const handleUpdateSectionResponsibility = async (sectionDbId, responsibility, vendorName = null) => {
-        // 1. Optimistic Local State Update for Workbench Sync
+        // ... existing code
         setSectionResponsibility(prev => ({
             ...prev,
             [sectionDbId]: responsibility
@@ -405,7 +405,6 @@ function App() {
             return { ...prev, recentItems: updatedItems };
         });
 
-        // 2. Database Update
         try {
             await supabase
                 .from('spec_sections')
@@ -414,8 +413,25 @@ function App() {
                     vendor_name: vendorName 
                 })
                 .eq('id', sectionDbId);
+        } catch (err) {}
+    };
+
+    const handleUpdateSectionTrackerState = async (sectionDbId, trackerStatus) => {
+        setProjectData(prev => {
+            if (!prev) return prev;
+            const updatedItems = (prev.recentItems || []).map(item => 
+                item.dbId === sectionDbId ? { ...item, tracker_status: trackerStatus } : item
+            );
+            return { ...prev, recentItems: updatedItems };
+        });
+
+        try {
+            await supabase
+                .from('spec_sections')
+                .update({ tracker_status: trackerStatus })
+                .eq('id', sectionDbId);
         } catch (err) {
-            console.error('Fatal Exception during responsibility update:', err);
+            console.error('Failed to update tracker state:', err);
         }
     };
 
@@ -1306,21 +1322,21 @@ function App() {
 
                     <div className="space-y-4 flex-1">
                         {projectData?.divisions && projectData?.divisions.length > 0 ? projectData?.divisions.map(div => (
-                            <div key={div.id} className="group relative overflow-hidden bg-white/[0.02] border border-white/5 hover:border-accent-primary/40 rounded-xl p-6 cursor-pointer transition-all hover:translate-y-[-2px] hover:shadow-[0_0_15px_rgba(255,107,0,0.1)]" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
+                            <div key={div.id} className="group relative overflow-hidden bg-white/[0.02] border border-white/5 hover:border-accent-primary/40 rounded-2xl p-8 cursor-pointer transition-all hover:translate-y-[-2px] hover:shadow-[0_0_15px_rgba(255,107,0,0.1)]" onClick={() => { setSelectedDivision(div); setView('workbench'); }}>
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 <div className="flex items-center justify-between pl-2">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-8 h-8 rounded shrink-0 flex items-center justify-center border ${div.completed === div.tasks ? 'bg-accent-primary/10 border-accent-primary/20 text-accent-primary' : 'bg-white/5 border-white/10 text-text-muted'}`}>
-                                            {div.completed === div.tasks ? <CheckCircle2 size={14} color="url(#dashboard-icon-gradient)" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} /> : <Layers size={14} color="url(#dashboard-icon-gradient)" className="opacity-50" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.5))' }} />}
+                                    <div className="flex items-center gap-6">
+                                        <div className={`w-12 h-12 rounded-xl shrink-0 flex items-center justify-center border ${div.completed === div.tasks ? 'bg-accent-primary/10 border-accent-primary/20 text-accent-primary' : 'bg-white/5 border-white/10 text-text-muted'}`}>
+                                            {div.completed === div.tasks ? <CheckCircle2 size={20} color="url(#dashboard-icon-gradient)" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.8))' }} /> : <Layers size={20} color="url(#dashboard-icon-gradient)" className="opacity-50" style={{ filter: 'drop-shadow(0 0 8px rgba(234,88,12,0.5))' }} />}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-sm tracking-wide">Division {div.id} - {div.title}</h3>
-                                            <p className="text-[10px] uppercase tracking-wider text-text-muted mt-0.5">{div.tasks} Sections Found</p>
+                                            <h3 className="font-black text-lg tracking-wide">Division {div.id} - {div.title}</h3>
+                                            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-text-muted mt-1">{div.tasks} Sections Found</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-5">
                                         <div className="text-right">
-                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded ${div.completed === div.tasks ? 'bg-accent-primary/20 text-accent-primary shadow-[0_0_10px_rgba(255,107,0,0.2)]' : 'bg-[#18181A] border border-white/5 text-text-muted group-hover:text-white transition-colors'}`}>
+                                            <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg ${div.completed === div.tasks ? 'bg-accent-primary/20 text-accent-primary shadow-[0_0_10px_rgba(255,107,0,0.2)]' : 'bg-[#18181A] border border-white/5 text-text-muted group-hover:text-white transition-colors'}`}>
                                                 {div.completed}/{div.tasks} Ready
                                             </span>
                                         </div>
@@ -1810,6 +1826,7 @@ function App() {
                     {view === 'assemble' && <AssemblyEngineView 
                         projectData={projectData} 
                         activeProject={activeProject} 
+                        onUpdateTrackerState={handleUpdateSectionTrackerState}
                     />}
                 </main>
             </div>
