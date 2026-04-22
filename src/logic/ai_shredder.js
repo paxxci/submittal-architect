@@ -131,28 +131,29 @@ class AIShredder {
 
 SECTION: ${section.id} — ${section.title}
 
-PART 2 CONTENT (Products):
+RAW TEXT OF ENTIRE SECTION:
 ---
-${section.part2 || '(empty)'}
----
-
-PART 1 CONTENT (General):
----
-${(section.part1 || '').slice(0, 800)}
+${section.rawContent || '(empty)'}
 ---
 
 INSTRUCTIONS:
-1. Identify every logical product block in Part 2 (e.g., "2.01 WALL SWITCHES", "2.02 RECEPTACLES")
-2. For each block, determine:
+1. Locate the exact, literal string in the RAW TEXT where Part 1 (General), Part 2 (Products), and Part 3 (Execution) begin. 
+   - These are usually headers like "PART 1 - GENERAL", "PART 2 - PRODUCTS", "PART 3 - EXECUTION". Sometimes they are missing the word PART and just say "1.01 SUMMARY", "2.01 MATERIALS", etc.
+   - You MUST return the EXACT literal string from the text (case-sensitive) so we can use string.indexOf() to split the text. If a part doesn't exist, return null.
+2. Identify every logical product block in Part 2 (e.g., "2.01 WALL SWITCHES", "2.02 RECEPTACLES")
+3. For each product block, determine:
    - isProduct: true if it describes a physical product that needs a cut sheet, false if it's a general rule/requirement/method
    - manufacturers: array of brand names explicitly listed (e.g., ["Hubbell", "Leviton", "Pass & Seymour"]) or [] if none listed
    - keyRequirements: array of specific technical specs (voltage, amperage, NEMA rating, UL listing, mounting type, etc.) — NOT installation methods
    - summary: one sentence describing what this block is about
-3. If Part 1/2/3 boundaries seem wrong (e.g., installation instructions ended up in part2), note it in partBoundariesCorrect
 
 Respond ONLY as valid JSON in this exact format:
 {
-  "partBoundariesCorrect": true,
+  "boundaries": {
+    "part1StartLine": "PART 1 - GENERAL",
+    "part2StartLine": "PART 2 - PRODUCTS",
+    "part3StartLine": "PART 3 - EXECUTION"
+  },
   "blocks": [
     {
       "blockTitle": "2.01 WALL SWITCHES",
@@ -170,6 +171,39 @@ Respond ONLY as valid JSON in this exact format:
      */
     _applyAIResult(section, aiResult) {
         const enriched = { ...section };
+
+        // Process Boundaries (Phase 2 Bulletproof Body Reader)
+        if (aiResult.boundaries) {
+            const raw = enriched.rawContent || '';
+            let p1Idx = aiResult.boundaries.part1StartLine ? raw.indexOf(aiResult.boundaries.part1StartLine) : -1;
+            let p2Idx = aiResult.boundaries.part2StartLine ? raw.indexOf(aiResult.boundaries.part2StartLine) : -1;
+            let p3Idx = aiResult.boundaries.part3StartLine ? raw.indexOf(aiResult.boundaries.part3StartLine) : -1;
+
+            // If indexOf fails, try to find a close match using lowercase/trim
+            if (p1Idx === -1 && aiResult.boundaries.part1StartLine) p1Idx = raw.toLowerCase().indexOf(aiResult.boundaries.part1StartLine.toLowerCase().trim());
+            if (p2Idx === -1 && aiResult.boundaries.part2StartLine) p2Idx = raw.toLowerCase().indexOf(aiResult.boundaries.part2StartLine.toLowerCase().trim());
+            if (p3Idx === -1 && aiResult.boundaries.part3StartLine) p3Idx = raw.toLowerCase().indexOf(aiResult.boundaries.part3StartLine.toLowerCase().trim());
+
+            // If we found valid boundaries, override the Regex SectionShredder!
+            if (p1Idx !== -1 || p2Idx !== -1 || p3Idx !== -1) {
+                console.log(`[AIShredder] Section ${section.id}: AI found exact boundaries. Overriding Regex.`);
+                
+                // Ensure indices are in order. If missing, default to end of file or previous index
+                if (p1Idx === -1) p1Idx = 0;
+                if (p2Idx === -1) p2Idx = p3Idx !== -1 ? p3Idx : raw.length;
+                if (p3Idx === -1) p3Idx = raw.length;
+
+                // Enforce sequential ordering to prevent negative slices
+                if (p2Idx < p1Idx) p2Idx = p1Idx;
+                if (p3Idx < p2Idx) p3Idx = p2Idx;
+
+                enriched.part1 = raw.slice(p1Idx, p2Idx).trim();
+                enriched.part2 = raw.slice(p2Idx, p3Idx).trim();
+                enriched.part3 = raw.slice(p3Idx).trim();
+            } else {
+                console.warn(`[AIShredder] Section ${section.id}: AI boundaries not found in text. Falling back to Regex.`);
+            }
+        }
 
         if (aiResult.blocks && Array.isArray(aiResult.blocks)) {
             // Attach block metadata — indexed by block title for fast lookup

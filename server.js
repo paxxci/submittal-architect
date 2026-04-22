@@ -208,8 +208,8 @@ app.get('/api/shred', async (req, res) => {
                 let enrichedSections = validSections;
                 if (process.env.OPENROUTER_API_KEY) {
                     jobs[jobId].status = 'ai_enriching';
-                    const electricalSections = validSections.filter(s => s.isElectrical && s.part2 && s.part2.length > 30);
-                    const nonElectrical = validSections.filter(s => !s.isElectrical || !s.part2 || s.part2.length <= 30);
+                    const electricalSections = validSections.filter(s => s.isElectrical && s.rawContent && s.rawContent.length > 100);
+                    const nonElectrical = validSections.filter(s => !s.isElectrical || !s.rawContent || s.rawContent.length <= 100);
 
                     console.log(`[API] AI Shredder: enriching ${electricalSections.length} electrical sections...`);
                     const aiShredder = new AIShredder(process.env.OPENROUTER_API_KEY);

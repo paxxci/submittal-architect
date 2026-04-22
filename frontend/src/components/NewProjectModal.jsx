@@ -17,8 +17,6 @@ const NewProjectModal = ({
     setDiscoveredSections,
     selectedSectionsForParsing,
     setSelectedSectionsForParsing,
-    customDivisionInput,
-    setCustomDivisionInput,
     projectManagers,
     onStartShredding
 }) => {
@@ -54,13 +52,13 @@ const NewProjectModal = ({
                         </div>
                         <div className="form-row">
                             <div className="form-group">
-                                <label>Client / GC</label>
+                                <label>Project Number</label>
                                 <input 
                                     type="text" 
                                     className="form-input" 
-                                    placeholder="e.g., Turner Construction"
-                                    value={newProjectData.client}
-                                    onChange={(e) => setNewProjectData({...newProjectData, client: e.target.value})}
+                                    placeholder="e.g., 2024-001"
+                                    value={newProjectData.projectNumber}
+                                    onChange={(e) => setNewProjectData({...newProjectData, projectNumber: e.target.value})}
                                 />
                             </div>
                             <div className="form-group">
@@ -167,9 +165,13 @@ const NewProjectModal = ({
                                                     .map(s => s.id)
                                             );
                                             setSelectedSectionsForParsing(initialSelected);
+                                        } else {
+                                            throw new Error(data.error || 'Backend returned failure');
                                         }
                                     } catch (err) {
                                         console.error('Discovery failed:', err);
+                                        alert(`Failed to analyze PDF. Please ensure the backend server is running on port 3001.\nError: ${err.message}`);
+                                        setNewProjectStep(2); // Go back to step 2
                                     } finally {
                                         setIsDiscovering(false);
                                     }
@@ -267,26 +269,6 @@ const NewProjectModal = ({
                                     )}
                                 </div>
 
-                                <div 
-                                    className={`division-item ${newProjectData.autoDetect ? 'selected' : ''}`}
-                                    style={{
-                                        marginBottom: '16px', 
-                                        padding: '16px',
-                                        background: newProjectData.autoDetect ? 'rgba(0, 255, 163, 0.05)' : 'var(--bg-deep)', 
-                                        borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--border-subtle)'
-                                    }}
-                                    onClick={() => setNewProjectData({...newProjectData, autoDetect: !newProjectData.autoDetect})}
-                                >
-                                    <div style={{display: 'flex', alignItems: 'center', gap: '16px'}}>
-                                        <div className="checkbox-box" style={{borderColor: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'var(--text-muted)', background: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'transparent', color: '#111'}}>
-                                            {newProjectData.autoDetect && <CheckCircle2 size={14} />}
-                                        </div>
-                                        <div>
-                                            <h4 style={{fontSize: '14px', fontWeight: 800, color: newProjectData.autoDetect ? 'var(--accent-secondary)' : 'white'}}>Semantic Discovery (Recommended)</h4>
-                                            <p style={{fontSize: '12px', color: 'var(--text-muted)'}}>Automatically scan unselected divisions for Electrical keywords (e.g. Div 16, Div 33, Div 40)</p>
-                                        </div>
-                                    </div>
-                                </div>
 
                                 <div className="modal-actions between" style={{borderTop: '1px solid var(--border-subtle)', paddingTop: '16px'}}>
                                     <button style={{fontSize: '14px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer'}} onClick={() => setNewProjectStep(2)}>Back</button>

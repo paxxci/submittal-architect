@@ -6,12 +6,13 @@ import {
     MoreHorizontal, CheckCircle2, Clock, 
     ArrowUpRight, Plus, Box, ShieldCheck,
     FileText, ExternalLink, Briefcase, Building2, Trash, Maximize, X, Globe,
-    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone, Edit2, Layers, LayoutGrid, List, Send, BookOpen
+    Bot, Loader2, FileUp, Users, ShoppingBag, ArrowUp, ArrowDown, Zap, Mail, Phone, Edit2, Layers, LayoutGrid, List, Send, BookOpen, MousePointer2
 } from 'lucide-react'
 import { supabase } from './supabase'
 import NewProjectModal from './components/NewProjectModal';
 import WorkbenchView from './components/WorkbenchView';
 import AssemblyEngineView from './components/AssemblyEngineView';
+import TemplateMappingModal from './components/TemplateMappingModal';
 import FormattedSpecText from './components/FormattedSpecText';
 import TrackerView from './TrackerView';
 import ErrorBoundary from './ErrorBoundary';
@@ -22,7 +23,7 @@ import './App.css';
 
 const MOCK_PROJECT = {
     name: "Luxury High-Rise Tower A",
-    client: "Figma - Devops", // Using the image inspiration
+    projectNumber: "2024-001", // Using the image inspiration
     progress: 60,
     daysLeft: 2,
     divisions: [
@@ -71,7 +72,7 @@ const MOCK_PORTFOLIO = [
     {
         id: '2',
         name: "Memorial Hospital Wing C",
-        client: "Skanska USA",
+        projectNumber: "2024-002",
         progress: 15,
         daysLeft: 45,
         divisions: []
@@ -79,7 +80,7 @@ const MOCK_PORTFOLIO = [
     {
         id: '3',
         name: "Central High School Renovation",
-        client: "DPR Construction",
+        projectNumber: "2024-003",
         progress: 82,
         daysLeft: 5,
         divisions: []
@@ -116,12 +117,10 @@ function App() {
     const [newProjectStep, setNewProjectStep] = useState(1)
     const [isDiscovering, setIsDiscovering] = useState(false);
     const [discoveredSections, setDiscoveredSections] = useState([]);
-    const [customDivisionInput, setCustomDivisionInput] = useState('');
     const [selectedSectionsForParsing, setSelectedSectionsForParsing] = useState(new Set())
-    const [vendors, setVendors] = useState(['Platt', 'Hubbell', 'North Coast'])
-    const [authorizedVendors, setAuthorizedVendors] = useState(['Platt Electric', 'CED', 'Graybar'])
+    const [vendors, setVendors] = useState([])
+    const [authorizedVendors, setAuthorizedVendors] = useState([])
     const [manufacturers, setManufacturers] = useState(['Hubbell', 'Leviton', 'Eaton'])
-    const [preferredWebsites, setPreferredWebsites] = useState(['hubbell.com', 'platt.com', 'graybar.com'])
     const [activeSubProductIndex, setActiveSubProductIndex] = useState(0) // Tracks which item in a multi-product stack is visible
 
     const [isAddSectionModalOpen, setIsAddSectionModalOpen] = useState(false)
@@ -136,13 +135,20 @@ function App() {
         zip: '94103',
         phone: '(555) 0199-2342',
         email: 'admin@submittalarch.com',
-        website: 'www.submittalarchitect.com'
+        website: 'www.submittalarchitect.com',
+        priority_domains: ['hubbell.com', 'platt.com', 'graybar.com']
     });
     const [isEditingCompanyInfo, setIsEditingCompanyInfo] = useState(false);
     const [editingPMId, setEditingPMId] = useState(null);
     const [isAddingPM, setIsAddingPM] = useState(false);
     const [newPM, setNewPM] = useState({ name: '', email: '', phone: '' });
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+    const [uploadErrorMsg, setUploadErrorMsg] = useState(null);
+    const templateInputRef = useRef(null);
+
+    const [mappingTemplate, setMappingTemplate] = useState(null);
+    const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
 
     const handleUpdateProjectAdmin = async (updates) => {
         if (!activeProject) return;
@@ -331,6 +337,10 @@ function App() {
             if (prefs.vendors) setVendors(prefs.vendors);
             if (prefs.authorizedVendors) setAuthorizedVendors(prefs.authorizedVendors);
             if (prefs.manufacturers) setManufacturers(prefs.manufacturers);
+        } else {
+            setVendors([]);
+            setAuthorizedVendors([]);
+            setManufacturers(['Hubbell', 'Leviton', 'Eaton']);
         }
 
         const allCompleted = [];
@@ -549,8 +559,8 @@ function App() {
             }, 1000);
             
             try {
-                // Include user-defined search preferences from project metadata
-                const preferredWebsites = activeProject?.metadata?.preferred_websites || [];
+                // Include global search preferences from company info
+                const preferredWebsites = companyInfo?.priority_domains || [];
                 const prefs = JSON.stringify({ vendors, brands: manufacturers, preferredWebsites });
                 const params = new URLSearchParams({
                     query: fallbackQuery,
@@ -649,7 +659,7 @@ function App() {
 
     const [newProjectData, setNewProjectData] = useState({
         name: '',
-        client: '',
+        projectNumber: '',
         manager: '',
         fileLoaded: false,
         autoDetect: true,
@@ -848,13 +858,52 @@ function App() {
     };
 
     const handleUploadTemplate = async (file) => {
-        const mockUrl = URL.createObjectURL(file);
-        const { data, error } = await supabase
-            .from('templates')
-            .insert([{ name: file.name, file_url: mockUrl, metadata: { type: 'cover_page' } }])
-            .select();
-        if (data) setCompanyTemplates(prev => [data[0], ...prev]);
-        if (error) console.error('Error uploading template:', error);
+        setIsUploadingTemplate(true);
+        setUploadErrorMsg(null);
+        try {
+            const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('templates')
+                .upload(fileName, file);
+
+            if (uploadError) {
+                console.error('Storage error:', uploadError);
+                throw new Error(`Storage upload failed. Ensure a public bucket named 'templates' exists. (${uploadError.message})`);
+            }
+
+            const { data: publicUrlData } = supabase.storage
+                .from('templates')
+                .getPublicUrl(fileName);
+
+            const { data, error } = await supabase
+                .from('templates')
+                .insert([{ name: file.name, file_url: publicUrlData.publicUrl, metadata: { type: 'cover_page', storage_path: fileName } }])
+                .select();
+                
+            if (error) throw error;
+            if (data) setCompanyTemplates(prev => [data[0], ...prev]);
+            
+        } catch (err) {
+            console.error('Error uploading template:', err);
+            setUploadErrorMsg(err.message);
+        } finally {
+            setIsUploadingTemplate(false);
+        }
+    };
+
+    const handleDeleteTemplate = async (id) => {
+        try {
+            const template = companyTemplates.find(t => t.id === id);
+            if (template?.metadata?.storage_path) {
+                await supabase.storage.from('templates').remove([template.metadata.storage_path]);
+            }
+            const { error } = await supabase.from('templates').delete().eq('id', id);
+            if (error) throw error;
+            setCompanyTemplates(prev => prev.filter(t => t.id !== id));
+        } catch (err) {
+            console.error('Error deleting template:', err);
+            alert('Failed to delete template: ' + err.message);
+        }
     };
     const renderPortfolio = () => {
         const sortedPortfolio = [...portfolio].sort((a, b) => {
@@ -911,7 +960,7 @@ function App() {
                                 </button>
                             </div>
                         </div>
-                        <button className="btn-primary flex items-center h-11 px-5 text-sm" onClick={() => { setIsNewProjectModalOpen(true); setNewProjectStep(1); setNewProjectData({ name: '', client: '', manager: '', fileLoaded: false, autoDetect: true, customDivisions: [], divisions: { '26': true, '27': false, '28': false } }); }}>
+                        <button className="btn-primary flex items-center h-11 px-5 text-sm" onClick={() => { setIsNewProjectModalOpen(true); setNewProjectStep(1); setNewProjectData({ name: '', projectNumber: '', manager: '', fileLoaded: false, autoDetect: true, customDivisions: [], divisions: { '26': true, '27': false, '28': false } }); }}>
                             <Plus size={18} className="mr-2" /> New Project
                         </button>
                     </div>
@@ -1062,6 +1111,60 @@ function App() {
                             </div>
                         </div>
 
+                        <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl mb-12">
+                            <div className="flex justify-between items-start" style={{ marginBottom: '24px' }}>
+                                <div>
+                                    <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3">
+                                        <ShieldCheck size={24} color="url(#company-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Priority Sourcing Domains
+                                    </h3>
+                                    <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9 leading-relaxed" style={{ marginTop: '8px' }}>
+                                        AI will globally search these preferred sites for all projects before manufacturer websites.<br/>
+                                        <span className="text-accent-primary/80 normal-case italic tracking-normal font-medium mt-1 inline-block">Ensure full domain format is used (e.g., https://www.website.com)</span>
+                                    </p>
+                                </div>
+                                <div className="relative mt-2">
+                                    <input 
+                                        placeholder="Add Domain..."
+                                        className="prism-input !py-2 !px-4 !text-[11px] !w-48 !bg-bg-deep border-accent-primary/20"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && e.target.value) {
+                                                const newList = [...(companyInfo.priority_domains || []), e.target.value];
+                                                handleUpdateCompanyInfo({ priority_domains: newList });
+                                                e.target.value = '';
+                                            }
+                                        }}
+                                    />
+                                    <Plus size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-accent-primary" />
+                                </div>
+                            </div>
+                            <div className="flex flex-col border border-white/5 rounded-xl overflow-hidden bg-bg-deep/50 shadow-inner">
+                                <table className="w-full text-left border-collapse">
+                                    <tbody className="divide-y divide-white/5">
+                                        {(!companyInfo.priority_domains || companyInfo.priority_domains.length === 0) ? (
+                                            <tr>
+                                                <td colSpan="2" className="py-16 text-center text-xs font-black text-text-muted uppercase tracking-widest italic opacity-50">No Priority Sites Defined</td>
+                                            </tr>
+                                        ) : companyInfo.priority_domains.map((site, idx) => (
+                                            <tr key={idx} className="hover:bg-accent-primary/5 transition-colors group">
+                                                <td className="pr-8 font-black text-sm text-white lowercase italic underline decoration-accent-primary/40 w-full" style={{ paddingTop: '14px', paddingBottom: '14px', paddingLeft: '32px' }}>{site}</td>
+                                                <td className="pl-8 text-right" style={{ paddingTop: '14px', paddingBottom: '14px', paddingRight: '32px' }}>
+                                                    <button 
+                                                        className="text-text-muted hover:text-red-400 p-2 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                        onClick={() => {
+                                                            const newList = companyInfo.priority_domains.filter((_, i) => i !== idx);
+                                                            handleUpdateCompanyInfo({ priority_domains: newList });
+                                                        }}
+                                                    >
+                                                        <Trash size={14} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
                         <div className="prism-card px-8 pt-12 pb-8 border border-white/10 bg-white/5 backdrop-blur-2xl shadow-2xl">
                             <div className="flex justify-between items-start" style={{ marginBottom: '20px' }}>
                                 <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3" style={{ marginTop: '16px' }}>
@@ -1183,15 +1286,59 @@ function App() {
                             <h3 className="text-xl font-black uppercase tracking-widest text-white flex items-center gap-3" style={{ marginBottom: '30px' }}>
                                 <FileText size={24} color="url(#company-icon-gradient)" style={{ filter: 'drop-shadow(0 0 12px rgba(234,88,12,0.8))' }} /> Output Standard
                             </h3>
-                            <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 flex flex-col items-center justify-center gap-3 mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => document.getElementById('template-upload').click()}>
-                                <input id="template-upload" type="file" className="hidden" accept=".pdf" onChange={(e) => e.target.files[0] && handleUploadTemplate(e.target.files[0])} />
+                            <div className="prism-card bg-bg-deep border-dashed border-white/10 p-10 flex flex-col items-center justify-center gap-3 mb-6 hover:border-accent-secondary/40 transition-colors cursor-pointer" onClick={() => templateInputRef.current?.click()}>
+                                <input ref={templateInputRef} type="file" className="hidden" accept=".pdf" onChange={(e) => {
+                                    if (e.target.files[0]) {
+                                        handleUploadTemplate(e.target.files[0]);
+                                        e.target.value = null;
+                                    }
+                                }} />
                                 <FileUp size={32} className="text-accent-secondary" />
-                                <h4 className="font-black text-sm uppercase italic">Upload Cover Template</h4>
+                                <h4 className="font-black text-sm uppercase italic">
+                                    {isUploadingTemplate ? 'Uploading...' : 'Upload Cover Template'}
+                                </h4>
+                                <span className="text-[10px] text-text-muted font-bold uppercase tracking-widest opacity-60 mt-2">PDF ONLY</span>
                             </div>
+                            {uploadErrorMsg && (
+                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl mb-6 text-red-400 text-xs font-bold">
+                                    {uploadErrorMsg}
+                                </div>
+                            )}
                             {companyTemplates.map(tpl => (
-                                <div key={tpl.id} className="p-4 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
-                                    <div className="font-bold text-xs uppercase italic">{tpl.name}</div>
-                                    <button className="text-text-muted hover:text-red-400" onClick={() => handleDeleteTemplate(tpl.id)}><Trash size={14} /></button>
+                                <div key={tpl.id} className="p-4 bg-white/5 rounded-xl border border-white/5 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="font-bold text-xs uppercase italic">{tpl.name}</div>
+                                        <div className="flex items-center gap-4">
+                                            <button 
+                                                className="text-text-muted hover:text-accent-primary transition-colors flex items-center gap-1" 
+                                                onClick={() => {
+                                                    setMappingTemplate(tpl);
+                                                    setIsMappingModalOpen(true);
+                                                }}
+                                                title="Map PDF Fields"
+                                            >
+                                                <MousePointer2 size={14} />
+                                                <span className="text-[10px] font-black uppercase tracking-widest hidden lg:block">Map Fields</span>
+                                            </button>
+                                            <button 
+                                                className="text-text-muted hover:text-white transition-colors" 
+                                                onClick={() => window.open(tpl.file_url, '_blank')}
+                                                title="Open Fullscreen"
+                                            >
+                                                <Maximize size={14} />
+                                            </button>
+                                            <button className="text-text-muted hover:text-red-400 transition-colors" onClick={() => handleDeleteTemplate(tpl.id)}>
+                                                <Trash size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="w-full h-48 bg-black/50 rounded-lg overflow-hidden border border-white/10 relative group hover:border-accent-primary/30 transition-colors">
+                                        <iframe 
+                                            src={`${tpl.file_url}#toolbar=0&navpanes=0`} 
+                                            className="w-full h-full" 
+                                            title={tpl.name}
+                                        />
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -1241,7 +1388,7 @@ function App() {
                 </h1>
                 
                 <p className="text-text-muted font-black uppercase tracking-[0.3em] text-[11px] opacity-60">
-                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> CLIENT: {projectData?.client || 'UNKNOWN'} | PM: {projectData?.manager || 'UNKNOWN'}
+                    <span className="text-accent-primary mr-3 text-lg font-black leading-none">/</span> PROJECT #: {projectData?.metadata?.projectNumber || projectData?.projectNumber || 'UNKNOWN'} | PM: {projectData?.metadata?.manager || projectData?.manager || 'UNKNOWN'}
                 </p>
             </div>
 
@@ -1398,7 +1545,7 @@ function App() {
                             </p>
                         </div>
                         <button 
-                            className="bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] text-red-500 hover:text-red-400 px-6 py-3 rounded flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-[0.2em] italic transition-all active:scale-[0.98]"
+                            className="text-red-500 hover:text-red-400 flex items-center justify-center gap-2 font-black text-[10px] uppercase tracking-[0.2em] italic transition-all active:scale-[0.98]"
                             onClick={() => setIsDeleteModalOpen(true)}
                         >
                             <Trash size={14} /> DELETE PROJECT
@@ -1427,7 +1574,11 @@ function App() {
                     .from('projects')
                     .insert([{ 
                         name: newProjectData.name || "Untitled Submittal",
-                        description: `Client: ${newProjectData.client || 'Unknown'} | PM: ${newProjectData.manager || 'Unknown'}`
+                        description: `Project #: ${newProjectData.projectNumber || 'Unknown'} | PM: ${newProjectData.manager || 'Unknown'}`,
+                        metadata: {
+                            projectNumber: newProjectData.projectNumber || '',
+                            manager: newProjectData.manager || ''
+                        }
                     }])
                     .select()
                     .single();
@@ -1435,10 +1586,10 @@ function App() {
                 if (pError) throw pError;
 
                 // Save the selected division scope to project metadata so future loads respect it
-                const selectedDivisionPrefixes = [
-                    ...Object.keys(newProjectData.divisions).filter(k => newProjectData.divisions[k]),
-                    ...newProjectData.customDivisions
-                ];
+                const selectedDivisionPrefixes = selectedSectionsForParsing.size > 0 
+                    ? Array.from(new Set(Array.from(selectedSectionsForParsing).map(sec => sec.replace(/\s/g, '').substring(0, 2))))
+                    : null;
+                
                 await supabase
                     .from('projects')
                     .update({ metadata: { selected_divisions: selectedDivisionPrefixes } })
@@ -1488,10 +1639,12 @@ function App() {
                                 // STRICT DIVISION FILTER: Only show sections from explicitly selected divisions
                                 // (selectedDivisionPrefixes already computed above)
 
-                                const filteredSections = sections.filter(s => {
-                                    const num = (s.section_number || '').replace(/\s/g, '');
-                                    return selectedDivisionPrefixes.some(prefix => num.startsWith(prefix));
-                                });
+                                const filteredSections = selectedDivisionPrefixes 
+                                    ? sections.filter(s => {
+                                        const num = (s.section_number || '').replace(/\s/g, '');
+                                        return selectedDivisionPrefixes.some(prefix => num.startsWith(prefix));
+                                    })
+                                    : sections;
 
                                 const uiItems = mapShreddedDataToUI(filteredSections);
                                 const newDivisions = deriveDivisions(uiItems);
@@ -1499,7 +1652,7 @@ function App() {
                                 const updatedProjectData = {
                                     id: project.id,
                                     name: project.name,
-                                    client: newProjectData.client,
+                                    projectNumber: newProjectData.projectNumber,
                                     progress: 0,
                                     daysLeft: 14,
                                     divisions: newDivisions,
@@ -1524,6 +1677,7 @@ function App() {
                 }
             } catch (err) {
                 console.error("Failed to run shredder:", err)
+                alert(`The Grand Shred failed to initialize. Please ensure the backend server is running on port 3001.\nError: ${err.message}`)
                 setIsShredding(false)
             }
         }, 500)
@@ -1800,11 +1954,9 @@ function App() {
                             projectData={projectData}
                             authorizedVendors={authorizedVendors}
                             authorizedBrands={manufacturers}
-                            preferredWebsites={preferredWebsites}
                             projectManagers={projectManagers}
                             onUpdateProjectAdmin={handleUpdateProjectAdmin}
                             setAuthorizedVendors={setAuthorizedVendors}
-                            setPreferredWebsites={setPreferredWebsites}
                             setView={setView}
                             setIsDeleteModalOpen={setIsDeleteModalOpen}
                         />
@@ -1827,6 +1979,9 @@ function App() {
                         projectData={projectData} 
                         activeProject={activeProject} 
                         onUpdateTrackerState={handleUpdateSectionTrackerState}
+                        companyTemplates={companyTemplates}
+                        companyInfo={companyInfo}
+                        projectManagers={projectManagers}
                     />}
                 </main>
             </div>
@@ -1844,8 +1999,6 @@ function App() {
                 setDiscoveredSections={setDiscoveredSections}
                 selectedSectionsForParsing={selectedSectionsForParsing}
                 setSelectedSectionsForParsing={setSelectedSectionsForParsing}
-                customDivisionInput={customDivisionInput}
-                setCustomDivisionInput={setCustomDivisionInput}
                 projectManagers={projectManagers}
                 onStartShredding={runAIShredder}
             />
@@ -1855,6 +2008,15 @@ function App() {
                 onClose={() => setIsDeleteModalOpen(false)}
                 onDelete={deleteProject}
                 activeProject={activeProject}
+            />
+
+            <TemplateMappingModal 
+                isOpen={isMappingModalOpen}
+                onClose={() => setIsMappingModalOpen(false)}
+                template={mappingTemplate}
+                onSaveSuccess={(updatedTemplate) => {
+                    setCompanyTemplates(prev => prev.map(t => t.id === updatedTemplate.id ? updatedTemplate : t));
+                }}
             />
 
         {/* Global Shredding Overlay */}

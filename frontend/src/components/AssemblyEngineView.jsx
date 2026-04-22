@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
-import { Layers, CheckCircle, Circle, ChevronRight, FileText, Printer, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Layers, CheckCircle, Circle, ChevronRight, FileText, Printer, Send, Loader2 } from 'lucide-react';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
-const AssemblyEngineView = ({ projectData, activeProject, onUpdateTrackerState }) => {
+const AssemblyEngineView = ({ projectData, activeProject, onUpdateTrackerState, companyTemplates, companyInfo, projectManagers }) => {
     const [selectedSections, setSelectedSections] = useState([]);
+    const [previewPdfUrl, setPreviewPdfUrl] = useState(null);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const toggleSection = (id) => {
         if (selectedSections.includes(id)) {
@@ -34,6 +37,121 @@ const AssemblyEngineView = ({ projectData, activeProject, onUpdateTrackerState }
              alert(`Submittal Package for ${activeItem.id} compiled and queued for distribution!`);
         }
     };
+
+    useEffect(() => {
+        let active = true;
+        let url = null;
+        
+        const generatePdf = async () => {
+            if (selectedSections.length === 0 || !companyTemplates || companyTemplates.length === 0) {
+                if (active) setPreviewPdfUrl(null);
+                return;
+            }
+
+            if (active) setIsGenerating(true);
+            try {
+                const template = companyTemplates[0]; 
+                const existingPdfBytes = await fetch(template.file_url).then(res => res.arrayBuffer());
+                const pdfDoc = await PDFDocument.load(existingPdfBytes);
+                const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                
+                const pages = pdfDoc.getPages();
+                const firstPage = pages[0];
+                const { width, height } = firstPage.getSize();
+                
+                let pmName = 'TBD';
+                if (activeProject?.metadata?.manager_name) {
+                    pmName = activeProject.metadata.manager_name;
+                } else if (projectManagers && projectManagers.length > 0) {
+                    pmName = projectManagers[0].name;
+                }
+                
+                const activeItem = readySections.find(s => s.id === selectedSections[0]);
+
+                const drawCenteredText = (text, y, size, font) => {
+                    if (!text) return;
+                    const textWidth = font.widthOfTextAtSize(text, size);
+                    firstPage.drawText(text, {
+                        x: (width / 2) - (textWidth / 2),
+                        y,
+                        size,
+                        font,
+                        color: rgb(0, 0, 0),
+                    });
+                };
+
+                const drawMappedText = (text, tagId, size, font) => {
+                    if (!text) return;
+                    const mappings = template.metadata?.mapping;
+                    if (mappings && mappings[tagId]) {
+                        const coords = mappings[tagId];
+                        // pdf-lib origin is bottom-left. Mapping UI origin is top-left.
+                        const x = width * coords.x;
+                        const y = height - (height * coords.y);
+                        
+                        // Center text horizontally on the clicked point
+                        const textWidth = font.widthOfTextAtSize(text, size);
+                        const adjustedX = Math.max(0, x - (textWidth / 2));
+                        
+                        firstPage.drawText(text, {
+                            x: adjustedX,
+                            y: y - (size / 2), // Adjust baseline slightly
+                            size,
+                            font,
+                            color: rgb(0, 0, 0),
+                        });
+                    } else {
+                        // Fallback logic if unmapped
+                        let yOffset = height / 2;
+                        if (tagId === 'projectName') yOffset += 60;
+                        if (tagId === 'sectionNumber') yOffset += 20;
+                        if (tagId === 'sectionTitle') yOffset -= 5;
+                        if (tagId === 'date') yOffset -= 40;
+                        if (tagId === 'pmName') yOffset -= 60;
+                        if (tagId === 'companyName') yOffset -= 80;
+                        
+                        drawCenteredText(text, yOffset, size, font);
+                    }
+                };
+
+                // Stamp data using mappings or fallbacks
+                drawMappedText(activeProject?.name || 'ACTIVE PROJECT', 'projectName', 24, helveticaBold);
+                
+                if (activeItem) {
+                    drawMappedText(`Section: ${activeItem.id}`, 'sectionNumber', 16, helveticaBold);
+                    drawMappedText(activeItem.title || 'Untitled', 'sectionTitle', 14, helvetica);
+                }
+                
+                drawMappedText(`Date: ${new Date().toLocaleDateString()}`, 'date', 12, helvetica);
+                drawMappedText(`Project Manager: ${pmName}`, 'pmName', 12, helvetica);
+                
+                if (companyInfo) {
+                    drawMappedText(companyInfo.name, 'companyName', 16, helveticaBold);
+                    drawMappedText(companyInfo.address, 'companyAddress', 12, helvetica);
+                    drawMappedText(companyInfo.phone, 'companyPhone', 12, helvetica);
+                }
+
+                const pdfBytes = await pdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                url = URL.createObjectURL(blob);
+                
+                if (active) setPreviewPdfUrl(url);
+                
+            } catch (err) {
+                console.error("Error generating PDF preview:", err);
+            } finally {
+                if (active) setIsGenerating(false);
+            }
+        };
+        
+        generatePdf();
+        
+        return () => {
+            active = false;
+            if (url) URL.revokeObjectURL(url);
+        };
+    }, [selectedSections, companyTemplates, activeProject, projectManagers, companyInfo]);
 
     return (
         <div className="tracker-container animate-fade-in py-8 px-6 lg:px-12 max-w-[1600px] mx-auto h-[calc(100vh-80px)] flex flex-col">
@@ -126,21 +244,29 @@ const AssemblyEngineView = ({ projectData, activeProject, onUpdateTrackerState }
                             </div>
                             
                             {/* Canvas Zone */}
-                            <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8">
-                                {/* Fake Cover Page */}
-                                <div className="w-full max-w-2xl aspect-[8.5/11] bg-white text-black p-12 shadow-xl relative flex flex-col justify-center items-center text-center">
-                                    <h1 className="text-4xl font-black uppercase mb-4 tracking-widest">Submittal Package</h1>
-                                    <h2 className="text-xl font-bold uppercase text-gray-500 tracking-widest">{activeProject?.name || 'Project Name'}</h2>
-                                    <div className="w-24 h-1 bg-black my-8"></div>
-                                    <h3 className="text-2xl font-black uppercase text-red-600 mb-2">
-                                        {selectedSections.length === 1 ? selectedSections[0] : `${selectedSections.length} Divisions Selected`}
-                                    </h3>
-                                    <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">
-                                        {selectedSections.length === 1 
-                                            ? readySections.find(s => s.id === selectedSections[0])?.title 
-                                            : 'Multi-Batch Package Compilation'}
-                                    </p>
-                                </div>
+                            <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center gap-8 bg-black/20">
+                                {isGenerating ? (
+                                    <div className="flex flex-col items-center justify-center text-text-muted p-12">
+                                        <Loader2 size={32} className="animate-spin text-accent-primary mb-4" />
+                                        <div className="text-xs font-black uppercase tracking-widest">Stamping Template...</div>
+                                    </div>
+                                ) : previewPdfUrl ? (
+                                    <div className="w-full max-w-4xl aspect-[8.5/11] bg-white rounded-lg overflow-hidden shadow-2xl relative border border-white/10 group">
+                                        <iframe 
+                                            src={`${previewPdfUrl}#toolbar=0&navpanes=0`} 
+                                            className="w-full h-full" 
+                                            title="Generated Cover Page"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="w-full max-w-2xl aspect-[8.5/11] bg-white/5 text-text-muted p-12 shadow-xl relative flex flex-col justify-center items-center text-center border border-dashed border-white/10 rounded-xl">
+                                        <FileText size={48} className="text-white/10 mb-4" />
+                                        <h3 className="text-xl font-black uppercase tracking-widest mb-2">No Template Found</h3>
+                                        <p className="text-sm font-bold opacity-60 uppercase tracking-widest">
+                                            Upload a cover template in Settings to generate standard PDFs.
+                                        </p>
+                                    </div>
+                                )}
                                 
                                 {/* Fake Cut Sheet Page 1 */}
                                 <div className="w-full max-w-2xl aspect-[8.5/11] bg-white p-12 shadow-xl opacity-80 flex flex-col items-center justify-center border-t-8 border-red-600">
