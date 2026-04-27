@@ -70,3 +70,19 @@ body {
 .badge-orange { background: rgba(255, 107, 0, 0.15); color: var(--accent-primary); }
 .badge-green { background: rgba(0, 255, 163, 0.15); color: var(--accent-secondary); }
 
+.proof-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(0, 255, 163, 0.05);
+  border: 1px solid rgba(0, 255, 163, 0.2);
+  border-radius: 9999px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

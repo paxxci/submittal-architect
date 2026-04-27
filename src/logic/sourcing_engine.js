@@ -217,17 +217,45 @@ class SourcingEngine {
     // TIER 0 / 2: CUSTOM DOMAIN SEARCH (PREFERRED OR GLOBAL FALLBACK)
     // ─────────────────────────────────────────────────────────────
 
-    async sourceFromCustomDomains(domains, productQuery) {
+    async sourceFromCustomDomains(domains, productQuery, keyRequirements = [], approvedManufacturers = []) {
         if (!this.browser) await this.init();
         if (!domains || domains.length === 0) return null;
 
         for (const domain of domains) {
             const cleanDomain = domain.replace(/https?:\/\//, '').replace(/www\./, '').split('/')[0];
+            
+            // --- NATIVE INTERCEPTS ---
+            if (cleanDomain.includes('platt.com')) {
+                const candidates = await this.getPlattCandidates(productQuery);
+                if (candidates && candidates.length > 0) {
+                    // Just take the top result for speed in the demo, or use AI to pick
+                    const best = candidates[0]; 
+                    if (best.href) {
+                        const pdp = await this.getPlattPDP(best.href);
+                        if (pdp && pdp.cutsheetUrl) return pdp;
+                    }
+                }
+                continue; // Skip DDG for Platt
+            }
+            if (cleanDomain.includes('northcoast') || cleanDomain.includes('northcoastelectric.com')) {
+                const candidates = await this.getNorthCoastCandidates(productQuery);
+                if (candidates && candidates.length > 0) {
+                    const best = candidates[0];
+                    if (best.href) {
+                        const pdp = await this.getNorthCoastPDP(best.href);
+                        if (pdp && pdp.cutsheetUrl) return pdp;
+                    }
+                }
+                continue; // Skip DDG for North Coast
+            }
+            
+            // --- DUCKDUCKGO FALLBACK ---
             const ddgQuery = `site:${cleanDomain} ${productQuery} cut sheet filetype:pdf`;
-            const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(ddgQuery)}&ia=web`;
+            const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(ddgQuery)}`;
             
             const page = await this.context.newPage();
             try {
+                console.log(`[DDG] Searching: ${searchUrl}`);
                 await page.goto(searchUrl, { waitUntil: 'load', timeout: 30000 });
                 await page.waitForTimeout(1000);
 
@@ -237,6 +265,7 @@ class SourcingEngine {
                 });
 
                 if (bestPdf) {
+                    console.log(`[DDG] Found PDF: ${bestPdf.href}`);
                     return {
                         vendor: `${cleanDomain}`, vendorShort: cleanDomain,
                         title: bestPdf.text || `Product Data Sheet (${cleanDomain})`,
@@ -245,6 +274,7 @@ class SourcingEngine {
                     };
                 }
 
+                console.log(`[DDG] No direct PDF found. Trying PDP search...`);
                 // Strategy 2: PDP Search
                 const pdpQuery = `site:${cleanDomain} ${productQuery}`;
                 const pdpSearchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(pdpQuery)}&ia=web`;
@@ -254,6 +284,8 @@ class SourcingEngine {
                         .map(a => a.href)
                         .filter(h => h.includes(d) && !h.includes('duckduckgo.com'))[0];
                 }, cleanDomain);
+                
+                console.log(`[DDG] PDP Result Link: ${res || 'none'}`);
 
                 if (res) {
                     await page.goto(res, { waitUntil: 'load', timeout: 20000 });

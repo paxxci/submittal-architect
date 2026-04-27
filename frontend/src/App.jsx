@@ -609,7 +609,10 @@ function App() {
                                 }
                             },
                         })
-                        .eq('id', section.dbId);
+                        .eq('id', section.dbId)
+                        .then(({ error }) => {
+                            if (error) console.error("Error saving to Supabase:", error);
+                        });
 
                 } else if (data.reason === 'no_product') {
                     setSelectedBlock(prev => prev ? { ...prev, isRule: true } : prev);
@@ -1119,7 +1122,6 @@ function App() {
                                     </h3>
                                     <p className="text-[10px] text-text-muted font-bold uppercase tracking-tight ml-9 leading-relaxed" style={{ marginTop: '8px' }}>
                                         AI will globally search these preferred sites for all projects before manufacturer websites.<br/>
-                                        <span className="text-accent-primary/80 normal-case italic tracking-normal font-medium mt-1 inline-block">Ensure full domain format is used (e.g., https://www.website.com)</span>
                                     </p>
                                 </div>
                                 <div className="relative mt-2">

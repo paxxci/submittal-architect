@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Box, FileUp, CheckCircle2 } from 'lucide-react';
 
 const FormattedSpecText = ({ 
@@ -10,10 +10,23 @@ const FormattedSpecText = ({
     onToggleBlock, 
     onBlockSelect, 
     selectedBlockKey, 
-    aiBlocks 
+    aiBlocks,
+    activeSubProductItem
 }) => {
     const fileInputRef = useRef(null);
     
+    useEffect(() => {
+        if (activeSubProductItem) {
+            // Give it a tiny delay to ensure render is complete
+            setTimeout(() => {
+                const el = document.getElementById('active-highlight');
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+    }, [activeSubProductItem]);
+
     if (!text) return null;
     
     const lines = text.split('\n');
@@ -149,8 +162,70 @@ const FormattedSpecText = ({
                                     else if (/^[a-z]\./.test(trimmed)) indentClass = "indent-level-3";
                                     else if (/^-/.test(trimmed)) indentClass = "indent-level-4";
 
+                                    let isPrimaryMatch = false;
+                                    let isSecondaryMatch = false;
+                                    
+                                    const stopwords = ['the', 'and', 'for', 'with', 'use', 'are', 'not', 'but', 'all', 'any', 'unless', 'otherwise', 'indicated', 'required', 'provide', 'products', 'listed', 'labeled', 'complying'];
+                                    
+                                    const getCleanWords = (str) => {
+                                        return str.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(' ').filter(t => t.length > 1 && !stopwords.includes(t));
+                                    };
+
+                                    if (isSelected && activeSubProductItem) {
+                                        // 1. Primary Highlight (Yellow)
+                                        const productWords = getCleanWords(activeSubProductItem.productType || '');
+                                        const lineWords = getCleanWords(trimmed);
+                                        
+                                        // Helper to check if a word matches another (handles simple plurals like s/es)
+                                        const wordMatches = (w, arr) => arr.some(aw => aw === w || aw === w + 's' || aw + 's' === w || aw === w + 'es' || aw + 'es' === w);
+
+                                        // If the line is short (like a header "D. Ground Bars") and ALL its meaningful words are in the product name
+                                        if (productWords.length > 0 && lineWords.length > 0 && lineWords.length <= 5) {
+                                            const matchCount = lineWords.filter(w => wordMatches(w, productWords)).length;
+                                            if (matchCount > 0 && matchCount >= lineWords.length * 0.8) {
+                                                isPrimaryMatch = true;
+                                            }
+                                        }
+                                        
+                                        // Or if the line contains almost all of the product words
+                                        if (!isPrimaryMatch && productWords.length > 0) {
+                                            const matchCount = productWords.filter(w => wordMatches(w, lineWords)).length;
+                                            if (matchCount >= Math.max(1, Math.ceil(productWords.length * 0.8))) {
+                                                isPrimaryMatch = true;
+                                            }
+                                        }
+
+                                        // 2. Secondary Highlight (Green) - Verified Requirements
+                                        const matchedReqs = activeSubProductItem.matchedRequirements || [];
+                                        if (!isPrimaryMatch && matchedReqs.length > 0) {
+                                            for (const req of matchedReqs) {
+                                                const reqWords = getCleanWords(req);
+                                                if (reqWords.length > 0) {
+                                                    // Calculate intersection using substring match
+                                                    const matchCount = lineWords.filter(w => wordMatches(w, reqWords)).length;
+                                                    // Require 80% overlap
+                                                    if (matchCount >= Math.max(1, Math.ceil(lineWords.length * 0.8)) || matchCount >= Math.max(1, Math.ceil(reqWords.length * 0.8))) {
+                                                        isSecondaryMatch = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    let highlightClasses = '';
+                                    if (isPrimaryMatch) {
+                                        highlightClasses = 'bg-yellow-500/20 text-yellow-200 border-l-2 border-yellow-500 pl-2 rounded-r-sm shadow-[inset_2px_0_0_0_#eab308]';
+                                    } else if (isSecondaryMatch) {
+                                        highlightClasses = 'bg-emerald-500/20 text-emerald-200 border-l-2 border-emerald-500 pl-2 rounded-r-sm shadow-[inset_2px_0_0_0_#10b981]';
+                                    }
+
                                     return (
-                                        <div key={lineIdx} className={indentClass}>
+                                        <div 
+                                            key={lineIdx} 
+                                            id={isPrimaryMatch || isSecondaryMatch ? 'active-highlight' : undefined}
+                                            className={`${indentClass} transition-colors duration-700 ${highlightClasses}`}
+                                        >
                                             {trimmed}
                                         </div>
                                     );

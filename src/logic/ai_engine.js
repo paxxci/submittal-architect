@@ -16,40 +16,60 @@ class AIEngine {
     }
 
     async _call(systemPrompt, userContent) {
-        const response = await axios.post(
-            this.baseUrl,
-            {
-                model: this.model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userContent }
-                ],
-                temperature: 0.1,
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://submittal-architect.app',
-                    'X-Title': 'Submittal Architect'
+        let currentModel = this.model;
+        let retries = 2;
+        
+        while (retries >= 0) {
+            try {
+                const response = await axios.post(
+                    this.baseUrl,
+                    {
+                        model: currentModel,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userContent }
+                        ],
+                        temperature: 0.1,
+                    },
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.apiKey}`,
+                            'Content-Type': 'application/json',
+                            'HTTP-Referer': 'https://submittal-architect.app',
+                            'X-Title': 'Submittal Architect'
+                        }
+                    }
+                );
+                return response.data.choices[0].message.content.trim();
+            } catch (err) {
+                console.error(`[AI] Call failed for model ${currentModel}. Status: ${err.response?.status}`);
+                if (retries === 0) throw err;
+                
+                if (err.response?.status === 429 || err.response?.status === 504 || err.response?.status === 502) {
+                    console.log(`[AI] Upstream issue detected (Status ${err.response?.status}). Switching fallback model...`);
+                    currentModel = 'openai/gpt-4o-mini';
                 }
+                
+                retries--;
+                await new Promise(r => setTimeout(r, 1500));
             }
-        );
-        return response.data.choices[0].message.content.trim();
+        }
     }
 
     async extractSearchQueries(sectionTitle, specText) {
         const NECHandbook = require('./nec_handbook');
-        const system = `You are a Master Electrical Estimator. You understand the National Electrical Code (NEC) and the physical differences between 'Raceway' (the pipe) and 'Fittings' (the connectors).
-        
-Industry Standards Reference:
-- NEC Category 'Fittings': ${NECHandbook.standard_mappings.Fittings.join(', ')}
-- NEC Category 'Raceway': ${NECHandbook.standard_mappings.Raceway.join(', ')}
-- Common Manufacturers: ${Object.keys(NECHandbook.common_manufacturers).join(', ')}
+        const system = `You are a Master Electrical Estimator acting as a Submittal extraction engine. 
+Your primary job is to extract a LIST of ALL distinct, physical, procurable items to be purchased from a specification block.
 
-Your goal is to extract a LIST of ALL distinct products to be purchased from a specification block. Often, a single block like 'FITTINGS' requires multiple items (e.g. fittings for Rigid, EMT, and IMC).`;
+CRITICAL ONTOLOGY RULES:
+1. WHAT IS A PRODUCT: A product is a tangible physical good that must be ordered from a distributor (e.g., 'Ground Rod', 'Mechanical Lug', 'Bare Copper Wire', 'Transformer').
+2. WHAT IS NOT A PRODUCT: Do NOT extract administrative text ('Submit shop drawings', 'Provide products listed...'), execution instructions ('Torque to 50 ft-lbs', 'Excavate trench'), or generic headers ('A. General', 'B. Requirements').
+3. SEMANTIC GROUPING (IGNORE FORMATTING): Do not blindly rely on 'A., B., C.' or '1., 2., 3.' numbering. Instead, read the text for meaning. 
+   - Identify the physical item.
+   - Gather all technical details describing that item (material, size, compliance, shape, mounting) and group them into its 'keyRequirements' array, regardless of how they are numbered or lettered.
+4. DISTINCT LINE ITEMS: If physical properties dictate that you must buy two different SKUs, they must be separate items. (e.g., 'Bare Copper Wire' and 'Insulated Copper Wire' are TWO distinct products, even if they share the same paragraph).`;
 
-        const user = `Read this electrical specification block and extract a list of all distinct product sourcing tasks.
+        const user = `Read this electrical specification block and extract a list of all distinct physical products to be sourced.
         
 BLOCK TITLE: "${sectionTitle}"
 
@@ -59,20 +79,19 @@ ${specText.slice(0, 4000)}
 """
 
 CRITICAL RULES:
-1. IDENTIFY MULTIPLE PRODUCTS: If the block mentions fittings for different types of conduit (Rigid, EMT, Liquidtight), return a separate entry for each conduit fitting type.
-2. STRICT PART NUMBERS: If you see specific numbers from manufacturers like Raco, Hubbell, or Steel City, YOU MUST include them in the 'searchQuery'. This is a MANDATORY requirement for accuracy.
-3. CATEGORY ENFORCEMENT: If the block title says 'FITTINGS', do NOT return search queries for 'Conduit', 'Pipe', or 'Raceway'.
-4. CONDUIT TYPE SPECIFICITY: Every productType MUST include the conduit type (e.g. 'Rigid Connector' NOT just 'Connector').
-5. MINIMIZE OVERLAP: Do not return 10 items for the same conduit type. Group by major category (e.g. 'EMT Fittings', 'Rigid Fittings').
+1. FOCUS ON TANGIBLE GOODS: Extract the physical items needed.
+2. COMPILE KEY REQUIREMENTS: For each physical item, gather all of its technical properties from the text into the 'keyRequirements' array.
+3. STRICT PART NUMBERS: If you see specific manufacturer part numbers (e.g. 'Raco 1222'), YOU MUST include them in the 'searchQuery'.
+4. MINIMIZE NOISE: Completely ignore general instructions, installation notes, and non-physical descriptions.
 
 Respond ONLY as valid JSON:
 {
   "products": [
     {
-      "searchQuery": "manufacturer + part number + product (e.g. 'Raco 1222 fitting')",
-      "productType": "Specific product name (e.g. 'Rigid Conduit Connector')",
-      "manufacturers": ["Raco", "Steel City"],
-      "keyRequirements": ["technical requirements for THIS specific item"],
+      "searchQuery": "manufacturer + part number + product (e.g. 'Hubbell Copper Rectangular Ground Bar')",
+      "productType": "Specific physical product name (e.g. 'Copper Ground Bar')",
+      "manufacturers": ["Hubbell", "Leviton"],
+      "keyRequirements": ["Copper rectangular", "Includes mounting brackets and insulators", "UL 467 compliance"],
       "isProduct": true
     }
   ]
@@ -122,14 +141,15 @@ Respond ONLY as valid JSON:
         }
 
         const NECHandbook = require('./nec_handbook');
-        const system = `You are a Master Electrical Estimator. You are precise and conservative.
+        const system = `You are a Master Electrical Estimator. You are precise but practical.
         
 NEC Category Guardrails:
 - A 'Fitting' (Connector, Coupling) is NOT a 'Raceway' (Pipe, Conduit).
 - If the Spec Block is for 'Fittings', you MUST REJECT any product that is just raw conduit/pipe (e.g. Allied Rigid Conduit) with a confidence of 0.0.
 - Exception: If the product is a fitting *for* the specified conduit, it is a valid match.
 
-Role: Verify that products meet specific technical standards (NEMA, UL, NEC). Matched requirements MUST be explicitly found in the vendor text.`;
+Role: Verify that products meet specific technical standards (NEMA, UL, NEC). 
+CRITICAL CONTEXT: Manufacturer cut sheets are generic and will almost NEVER contain every single granular detail or installation note written by the engineer. Do NOT penalize a product heavily just because a minor spec detail (e.g., 'install with stainless bolts') is missing from the marketing text. Focus on verifying the core physical identity and primary ratings (e.g., is it Copper? Is it a Ground Bar? Is it UL 467?).`;
 
         const candidateList = candidates
             .map((c, i) => `[${i}] Title: "${c.title}"${c.description ? `\n    Description: "${c.description}"` : ''}`)
@@ -199,14 +219,16 @@ Respond ONLY as valid JSON:
             return { isMatch: true, confidence: 0.7, notes: 'No specific requirements to verify.' };
         }
 
-        const system = `You are an electrical estimator verifying product compliance against project specifications.`;
+        const system = `You are an electrical estimator verifying product compliance against project specifications.
+CRITICAL CONTEXT: Manufacturer cut sheets are generic marketing documents. They almost NEVER contain every single granular detail (e.g., installation notes, specific bolt sizes, or redundant standards) listed by the engineer. 
+Do NOT penalize a product heavily for missing minor details. Focus on verifying the core physical identity: Is this the right class of product? Does it meet the primary ratings (e.g., UL 467)?`;
         const user = `Product found: "${foundProductTitle}"
 Cut sheet URL: "${cutsheetUrl}"
 
 Spec requirements to check:
 ${keyRequirements.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 
-Based on the product name alone, estimate whether this product matches.
+Based on the product name and URL, estimate whether this product is the correct physical match.
 Respond ONLY as JSON: { "isMatch": true/false, "confidence": 0.0-1.0, "notes": "brief reason" }`;
 
         try {

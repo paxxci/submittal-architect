@@ -3,7 +3,7 @@ import {
     CheckCircle2, Clock, Zap, FileText, 
     ExternalLink, Search, Plus, Trash,
     Loader2, AlertCircle, ChevronRight, ShieldCheck,
-    Box, FileUp, FileSearch, Maximize, X, LayoutDashboard
+    Box, FileUp, FileSearch, Maximize, X, LayoutDashboard, Lock, ListChecks, Check, RefreshCw, Upload
 } from 'lucide-react';
 import FormattedSpecText from './FormattedSpecText';
 
@@ -37,6 +37,8 @@ const WorkbenchView = ({
 }) => {
     const [pdfAlignmentOffset, setPdfAlignmentOffset] = useState(0);
     const [hoveredRequirement, setHoveredRequirement] = useState(null);
+    const [showExtractionProof, setShowExtractionProof] = useState(false);
+    const [lockedItems, setLockedItems] = useState({});
 
     const getCalculatedResponsibility = (specId) => {
         if (sectionResponsibility[specId]) return sectionResponsibility[specId];
@@ -425,6 +427,11 @@ const WorkbenchView = ({
                                                             }}
                                                             selectedBlockKey={selectedBlock?.blockKey}
                                                             aiBlocks={selectedSpec?.aiBlockMap || null}
+                                                            activeSubProductItem={
+                                                                (Array.isArray(selectedSpec?.metadata?.sourcedBlocks?.[selectedBlock?.blockKey]) 
+                                                                    ? selectedSpec?.metadata?.sourcedBlocks?.[selectedBlock?.blockKey][activeSubProductIndex] 
+                                                                    : selectedSpec?.metadata?.sourcedBlocks?.[selectedBlock?.blockKey]) || null
+                                                            }
                                                         />
                                                     </div>
                                                 ) : (
@@ -484,7 +491,7 @@ const WorkbenchView = ({
                                         const compLabel = compPct >= 80 ? "Spec Compliant" : compPct >= 60 ? "Needs Review" : "Likely Wrong Product";
 
                                         return (
-                                            <div className="flex flex-col h-full overflow-hidden">
+                                            <div className="flex flex-col h-full overflow-y-auto custom-scrollbar">
                                                 {/* Compliance Scorecard Header */}
                                                 <div className="sourcing-clean-header flex flex-col gap-2">
                                                     <div className="flex justify-between items-center">
@@ -493,7 +500,7 @@ const WorkbenchView = ({
                                                                 <span className={`badge ${compPct >= 80 ? 'badge-green' : 'badge-orange'}`}>
                                                                     {compPct}% {compLabel}
                                                                 </span>
-                                                                <span className="text-[10px] uppercase font-black tracking-widest text-text-muted opacity-50">
+                                                                <span className="text-[11px] uppercase font-black tracking-[0.1em] text-text-muted">
                                                                     {currentItem.vendor || "Verified Source"}
                                                                 </span>
                                                             </div>
@@ -503,65 +510,99 @@ const WorkbenchView = ({
                                                         </div>
                                                         <div className="flex gap-2">
                                                             <button 
-                                                                onClick={() => setExpandedPdfUrl(currentItem.cutsheetUrl)}
-                                                                className="btn-icon !w-9 !h-9 border-white/5 bg-white/5 hover:bg-white/10 transition-all"
-                                                                title="Expand Preview"
+                                                                onClick={(e) => { e.stopPropagation(); window.open(currentItem.cutsheetUrl, '_blank'); }}
+                                                                className="btn-icon !w-9 !h-9 border-white/5 bg-white/5 hover:bg-white/10 hover:border-accent-primary/50 hover:text-accent-primary transition-all"
+                                                                title="Open Document in New Tab"
                                                             >
-                                                                <Maximize size={16} />
+                                                                <ExternalLink size={16} />
                                                             </button>
                                                         </div>
                                                     </div>
 
                                                     {/* Standardized Product Tabs (Matches Part 1/2/3 style) */}
-                                                    {items.length > 1 && (
+                                                    {items.length > 0 && (
                                                         <div className="product-tab-grid">
                                                             {items.map((item, idx) => (
                                                                 <div 
                                                                     key={idx}
                                                                     onClick={() => setActiveSubProductIndex(idx)}
-                                                                    className={`item-card prism-card !w-20 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-1.5 ${activeSubProductIndex === idx ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
+                                                                    className={`item-card prism-card !w-20 !flex-none cursor-pointer transition-all text-center flex flex-col items-center justify-center !p-1.5 relative ${activeSubProductIndex === idx ? 'active ring-2 ring-accent-primary' : 'hover:border-accent-primary/50'}`}
                                                                 >
-                                                                    <h4 className="font-bold text-[8px] uppercase opacity-70">ITEM {idx + 1}</h4>
-                                                                    <span className="text-[8px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full">
-                                                                        {item.productType?.split(' ')[0] || "Select"}
+                                                                    <div className="absolute top-1 right-1 opacity-40 hover:opacity-100 hover:text-accent-secondary transition-all" title="Lock Item (Coming Soon)" onClick={(e) => { e.stopPropagation(); }}>
+                                                                        <Lock size={8} />
+                                                                    </div>
+                                                                    <h4 className="font-bold text-[8px] uppercase opacity-70 mt-1">ITEM {idx + 1}</h4>
+                                                                    <span className="text-[8px] text-text-muted mt-0.5 uppercase tracking-tighter whitespace-nowrap overflow-hidden text-ellipsis w-full" title={item.productType}>
+                                                                        {item.productType || "Select"}
                                                                     </span>
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     )}
 
-                                                    {/* Simplified Architect Reasoning */}
-                                                    <div className="architect-reasoning-block">
-                                                        <div className="label">Architect Reasoning</div>
+                                                    {/* Simplified Architect Reasoning & Toggle */}
+                                                    <div className="architect-reasoning-block pb-3 border-b border-white/5">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <div className="label !mb-0">Architect Reasoning</div>
+                                                            <button 
+                                                                onClick={() => setShowExtractionProof(!showExtractionProof)}
+                                                                className="text-[9px] uppercase font-bold text-accent-secondary/80 hover:text-accent-secondary flex items-center gap-1 transition-colors"
+                                                            >
+                                                                <ListChecks size={10} />
+                                                                {showExtractionProof ? "Hide Proof" : "Verify Proof"}
+                                                                <ChevronRight size={10} className={`transition-transform ${showExtractionProof ? 'rotate-90' : ''}`} />
+                                                            </button>
+                                                        </div>
                                                         <p className="text-[11px] text-text-muted leading-relaxed font-medium italic">
                                                             "{currentItem.complianceReason || "This product matches the base requirements for this section."}"
                                                         </p>
                                                     </div>
+
+                                                    {/* Item-Level Action Bar */}
+                                                    <div className="flex gap-2 p-3 bg-black/20 border-b border-white/5 shrink-0">
+                                                        <button 
+                                                            onClick={() => setLockedItems(prev => ({ ...prev, [activeSubProductIndex]: !prev[activeSubProductIndex] }))}
+                                                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md border text-[9px] font-bold uppercase tracking-wider transition-all ${lockedItems[activeSubProductIndex] ? 'bg-accent-secondary/20 border-accent-secondary/50 text-accent-secondary' : 'bg-white/5 border-white/10 text-text-muted hover:bg-white/10 hover:text-white'}`}
+                                                        >
+                                                            {lockedItems[activeSubProductIndex] ? <Check size={12} /> : <Lock size={12} />}
+                                                            {lockedItems[activeSubProductIndex] ? 'Locked' : 'Lock Item'}
+                                                        </button>
+                                                        <button className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-text-muted hover:bg-white/10 hover:text-white transition-all">
+                                                            <RefreshCw size={12} />
+                                                            Find Alt
+                                                        </button>
+                                                        <button className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-text-muted hover:bg-white/10 hover:text-white transition-all">
+                                                            <Upload size={12} />
+                                                            Upload
+                                                        </button>
+                                                    </div>
                                                 </div>
 
-                                                <div className="shrink-0 bg-bg-deeper border-b border-border-subtle shadow-inner custom-scrollbar overflow-y-auto" style={{ maxHeight: '180px' }}>
-                                                    <div className="px-4 py-2 flex justify-between items-center border-b border-white/5 opacity-80">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
-                                                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-secondary">Extraction Proof</span>
-                                                        </div>
-                                                        <span className="text-[8px] font-mono text-text-muted opacity-50 uppercase tracking-tighter">Verified against master spec</span>
-                                                    </div>
-                                                    <div className="p-3 flex flex-wrap gap-1.5">
-                                                        {matched.map((r, i) => (
-                                                            <div 
-                                                                key={i} 
-                                                                className="proof-tag animate-fade-in"
-                                                                onMouseEnter={() => setHoveredRequirement(r)}
-                                                            >
-                                                                <CheckCircle2 size={10} />
-                                                                <span>{r}</span>
+                                                {showExtractionProof && (
+                                                    <div className="shrink-0 bg-bg-deeper border-b border-border-subtle shadow-inner custom-scrollbar overflow-y-auto" style={{ maxHeight: '150px' }}>
+                                                        <div className="px-4 py-2 flex justify-between items-center border-b border-white/5 opacity-80">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary shadow-[0_0_8px_rgba(0,255,163,0.5)]"></div>
+                                                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-accent-secondary">Extraction Proof</span>
                                                             </div>
-                                                        ))}
+                                                            <span className="text-[8px] font-mono text-text-muted opacity-50 uppercase tracking-tighter">Verified against master spec</span>
+                                                        </div>
+                                                        <div className="p-3 flex flex-wrap gap-1.5">
+                                                            {matched.map((r, i) => (
+                                                                <div 
+                                                                    key={i} 
+                                                                    className="proof-tag animate-fade-in"
+                                                                    onMouseEnter={() => setHoveredRequirement(r)}
+                                                                >
+                                                                    <CheckCircle2 size={10} />
+                                                                    <span>{r}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
 
-                                                <div className="flex-1 relative bg-black/10 flex flex-col">
+                                                <div className="flex-1 relative bg-black/10 flex flex-col min-h-[500px]">
                                                     {currentItem?.cutsheetUrl ? (
                                                         <iframe 
                                                             key={`${currentItem.cutsheetUrl}-${activeSubProductIndex}`}

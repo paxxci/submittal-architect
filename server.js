@@ -301,14 +301,26 @@ app.get('/api/source', async (req, res) => {
             if (parsed.isProduct === false) {
                 return res.json({ success: false, reason: 'no_product', message: 'Not a product block.' });
             }
-            productTasks = [{
-                searchQuery: (parsed.manufacturers?.[0] ? parsed.manufacturers[0] + ' ' : '') + (parsed.summary || query),
-                productType: parsed.productType || query,
-                manufacturers: parsed.manufacturers || [],
-                keyRequirements: parsed.keyRequirements || []
-            }];
+            // Block is valid! Now use AI to split it into multiple distinct products if necessary
+            if (ai) {
+                console.log('[AI] Extracting multiple product tasks from pre-validated spec block...');
+                productTasks = await ai.extractSearchQueries(sectionTitle || query, specText || query);
+                // Inject the pre-computed manufacturers if the live extraction missed them
+                productTasks.forEach(pt => {
+                    if (!pt.manufacturers || pt.manufacturers.length === 0) {
+                        pt.manufacturers = parsed.manufacturers || [];
+                    }
+                });
+            } else {
+                productTasks = [{
+                    searchQuery: (parsed.manufacturers?.[0] ? parsed.manufacturers[0] + ' ' : '') + (parsed.summary || query),
+                    productType: parsed.productType || query,
+                    manufacturers: parsed.manufacturers || [],
+                    keyRequirements: parsed.keyRequirements || []
+                }];
+            }
         } else if (ai) {
-            console.log('[AI] Extracting multiple product tasks from spec block...');
+            console.log('[AI] Extracting multiple product tasks from raw spec block...');
             productTasks = await ai.extractSearchQueries(sectionTitle || query, specText || query);
         } else {
             // No AI — generic fallback
@@ -332,8 +344,18 @@ app.get('/api/source', async (req, res) => {
                 const customResult = await engine.sourceFromCustomDomains(preferredWebsites, task.searchQuery);
                 if (customResult && customResult.cutsheetUrl) {
                     selectedResult = customResult;
-                    complianceScore = { confidence: 0.90, reason: `Verified on Preferred Site: ${customResult.vendorShort}`, matchedRequirements: [] };
-                    console.log(`[Tier 0] Match found on preferred site: ${customResult.vendorShort}`);
+                    if (ai && task.keyRequirements?.length > 0) {
+                        console.log(`[Tier 0] Match found on preferred site. Running AI verification...`);
+                        const verification = await ai.verifyCutsheetMatch(customResult.title, customResult.cutsheetUrl, task.keyRequirements);
+                        complianceScore = { 
+                            confidence: verification.confidence || 0.90, 
+                            reason: verification.notes || `Verified on Preferred Site: ${customResult.vendorShort}`, 
+                            matchedRequirements: verification.isMatch ? task.keyRequirements : [] 
+                        };
+                    } else {
+                        complianceScore = { confidence: 0.90, reason: `Verified on Preferred Site: ${customResult.vendorShort}`, matchedRequirements: task.keyRequirements || [] };
+                    }
+                    console.log(`[Tier 0] Match finalized for: ${customResult.vendorShort}`);
                 }
             }
 
